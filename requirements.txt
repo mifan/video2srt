@@ -1,0 +1,7 @@
+pyyaml
+qwen-asr
+torch
+torchaudio
+soundfile
+librosa
+accelerate
