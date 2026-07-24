@@ -18,14 +18,16 @@ class SRTWriter:
         self,
         seconds
     ):
-
         """
-        seconds:
-            float
+        Convert seconds to SRT timestamp
 
-        return:
+        Example:
 
-            HH:MM:SS,mmm
+        1.234
+
+        ->
+        
+        00:00:01,234
 
         """
 
@@ -60,21 +62,60 @@ class SRTWriter:
 
 
 
+    def clean_text(
+        self,
+        text
+    ):
+
+        """
+        清理字幕文本
+        """
+
+
+        if text is None:
+
+            return ""
+
+
+        text = str(text)
+
+
+        #
+        # 去掉多余空格
+        #
+
+        text = (
+            text
+            .replace(
+                "\n",
+                " "
+            )
+            .strip()
+        )
+
+
+        return text
+
+
+
     def write(
         self,
-        align_result,
+        segments,
         output_file
     ):
 
         """
-        写入 SRT
+        Generate SRT file
 
-        align_result:
-            ForcedAlignResult
+        segments:
 
-
-        output_file:
-            xxx.srt
+        [
+            {
+                start: float,
+                end: float,
+                text: str
+            }
+        ]
 
         """
 
@@ -85,13 +126,9 @@ class SRTWriter:
 
 
         self.logger.info(
-            f"Writing subtitle: {output_file}"
+            f"Writing SRT: {output_file}"
         )
 
-
-        items = (
-            align_result.items
-        )
 
 
         lines = []
@@ -100,10 +137,16 @@ class SRTWriter:
         index = 1
 
 
-        for item in items:
+
+        for seg in segments:
 
 
-            text = item.text.strip()
+            text = self.clean_text(
+                seg.get(
+                    "text",
+                    ""
+                )
+            )
 
 
             if not text:
@@ -114,22 +157,25 @@ class SRTWriter:
 
             start = self.format_time(
 
-                item.start_time
+                seg["start"]
 
             )
 
 
             end = self.format_time(
 
-                item.end_time
+                seg["end"]
 
             )
 
 
+
+            #
+            # SRT block
+            #
+
             lines.append(
-
                 str(index)
-
             )
 
 
@@ -141,16 +187,12 @@ class SRTWriter:
 
 
             lines.append(
-
                 text
-
             )
 
 
             lines.append(
-
                 ""
-
             )
 
 
@@ -165,6 +207,7 @@ class SRTWriter:
             encoding="utf-8"
 
         )
+
 
 
         self.logger.info(
