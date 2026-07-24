@@ -6,7 +6,7 @@ from src.ffmpeg_util import FFmpegExtractor
 from src.qwen3_asr import Qwen3Recognizer
 from src.aligner import Qwen3Aligner
 from src.subtitle import SRTWriter
-
+from src.segmenter import SubtitleSegmenter
 
 class Pipeline:
 
@@ -72,6 +72,8 @@ class Pipeline:
             )
 
         )
+
+        self.segmenter = SubtitleSegmenter()
 
         self.writer = SRTWriter()
 
@@ -238,8 +240,13 @@ class Pipeline:
         )
 
 
+        subtitle_segments = self.segmenter.segment(
+            segments
+        )
+
+
         self.writer.write(
-            segments,
+            subtitle_segments,
             srt_file
         )
 
