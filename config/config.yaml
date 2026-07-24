@@ -1,0 +1,16 @@
+model:
+  asr:
+    D:\Models\Qwen3-ASR-1.7B
+  aligner:
+    D:\Models\Qwen3-ForcedAligner
+
+ffmpeg:
+  exe:
+    D:\ffmpeg\bin\ffmpeg.exe
+
+device:
+  auto
+
+subtitle:
+  format:
+    srt
