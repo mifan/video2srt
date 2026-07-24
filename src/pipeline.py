@@ -1,21 +1,29 @@
 import logging
 
+from src.ffmpeg_util import FFmpegExtractor
+
 
 class Pipeline:
 
 
-    def __init__(self):
+    def __init__(
+        self,
+        config
+    ):
 
         self.logger = logging.getLogger(
             "video2srt"
         )
 
 
-    def run(self, video):
+        self.config = config
 
-        self.logger.info(
-            f"Input video: {video}"
-        )
+
+
+    def run(
+        self,
+        video
+    ):
 
 
         self.logger.info(
@@ -24,18 +32,40 @@ class Pipeline:
 
 
         #
-        # 后面这里加入：
+        # Step 2:
+        # extract audio
         #
-        # 1. ffmpeg extract audio
+
+        extractor = FFmpegExtractor(
+
+            self.config.get(
+                "ffmpeg",
+                "exe"
+            )
+
+        )
+
+
+        wav = extractor.extract(
+            video
+        )
+
+
+        self.logger.info(
+            f"WAV file: {wav}"
+        )
+
+
         #
-        # 2. Qwen3-ASR
-        #
-        # 3. ForcedAligner
-        #
-        # 4. SRT writer
+        # Step 3:
+        # Qwen3-ASR
         #
 
 
         self.logger.info(
-            "Pipeline finished"
+            "ASR not implemented yet"
         )
+
+
+
+        return wav
