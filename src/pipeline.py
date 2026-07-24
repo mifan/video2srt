@@ -1,6 +1,8 @@
 import logging
 
 from src.ffmpeg_util import FFmpegExtractor
+from src.qwen3_asr import Qwen3Recognizer
+
 
 
 class Pipeline:
@@ -19,6 +21,24 @@ class Pipeline:
         self.config = config
 
 
+        #
+        # 初始化 ASR
+        #
+
+        self.asr = Qwen3Recognizer(
+
+            self.config.get(
+                "model",
+                "asr"
+            ),
+
+            self.config.get(
+                "device"
+            )
+
+        )
+
+
 
     def run(
         self,
@@ -32,8 +52,7 @@ class Pipeline:
 
 
         #
-        # Step 2:
-        # extract audio
+        # Step 2
         #
 
         extractor = FFmpegExtractor(
@@ -51,21 +70,26 @@ class Pipeline:
         )
 
 
-        self.logger.info(
-            f"WAV file: {wav}"
+
+        #
+        # Step 3
+        #
+
+        result = self.asr.transcribe(
+            wav
         )
 
 
-        #
-        # Step 3:
-        # Qwen3-ASR
-        #
-
-
         self.logger.info(
-            "ASR not implemented yet"
+            "Recognition finished"
         )
 
 
+        for item in result:
 
-        return wav
+            self.logger.info(
+                item.text
+            )
+
+
+        return result
