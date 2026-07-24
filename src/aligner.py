@@ -1,7 +1,8 @@
 import logging
 import torch
 
-from transformers import AutoModelForSpeechSeq2Seq
+from qwen_asr import Qwen3ForcedAligner
+
 
 
 class Qwen3Aligner:
@@ -24,31 +25,28 @@ class Qwen3Aligner:
 
 
         self.logger.info(
-            f"Aligner device: {self.device}"
+            f"ForcedAligner device: {self.device}"
         )
 
 
         self.logger.info(
-            "Loading Qwen3 ForcedAligner..."
+            "Loading Qwen3-ForcedAligner..."
         )
 
 
-        self.model = (
-            AutoModelForSpeechSeq2Seq
-            .from_pretrained(
+        self.model = Qwen3ForcedAligner.from_pretrained(
 
-                model_path,
+            model_path,
 
-                torch_dtype=torch.float16,
+            device_map=self.device,
 
-                device_map=self.device
+            dtype=torch.float16
 
-            )
         )
 
 
         self.logger.info(
-            "ForcedAligner loaded"
+            "Qwen3-ForcedAligner loaded"
         )
 
 
@@ -75,51 +73,43 @@ class Qwen3Aligner:
     def align(
         self,
         audio_file,
-        text
+        text,
+        language="Chinese"
     ):
 
         """
-        输入:
+        audio_file:
+            wav path
 
-            wav
-            text
+        text:
+            ASR output text
 
-
-        输出:
-
-            [
-              {
-                start: float,
-                end: float,
-                text: str
-              }
-            ]
+        language:
+            Chinese / English
         """
 
 
         self.logger.info(
-            "Running alignment..."
+            "Running forced alignment..."
         )
 
 
-        #
-        # 注意：
-        #
-        # Qwen3 ForcedAligner
-        # 官方接口可能随版本变化
-        #
-        # 这里封装接口，
-        # 后续只需要调整内部调用。
-        #
-
-
-        result = self.model.align(
+        results = self.model.align(
 
             audio=str(audio_file),
 
-            text=text
+            text=text,
+
+            language=language
 
         )
 
 
-        return result
+        if not results:
+
+            raise RuntimeError(
+                "Forced alignment returned empty result"
+            )
+
+
+        return results[0]

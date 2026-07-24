@@ -199,11 +199,9 @@ class Pipeline:
 
 
         segments = self.aligner.align(
-
             wav_file,
-
-            text
-
+            text,
+            language=self.detect_language(text)
         )
 
 
@@ -227,6 +225,24 @@ class Pipeline:
 
         return segments
 
+
+    def detect_language(self, text):
+
+        chinese = 0
+        english = 0
+
+
+        for c in text:
+
+            if '\u4e00' <= c <= '\u9fff':
+                chinese += 1
+            elif c.isalpha():
+                english += 1
+
+
+        if chinese >= english:
+            return "Chinese"
+        return "English"
 
 
 
