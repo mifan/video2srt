@@ -167,26 +167,15 @@ def main():
         # 执行
         #
 
-        segments = pipeline.run(
-
-            video
-
-        )
-
+     
+        srt_file = pipeline.run(video)
 
 
         logger.info(
-
-            "Processing completed"
-
+            f"Subtitle created: {srt_file}"
         )
 
 
-        logger.info(
-
-            f"Segments generated: {len(segments)}"
-
-        )
 
 
         #

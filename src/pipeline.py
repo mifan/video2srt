@@ -5,7 +5,7 @@ from pathlib import Path
 from src.ffmpeg_util import FFmpegExtractor
 from src.qwen3_asr import Qwen3Recognizer
 from src.aligner import Qwen3Aligner
-
+from src.subtitle import SRTWriter
 
 
 class Pipeline:
@@ -72,6 +72,8 @@ class Pipeline:
             )
 
         )
+
+        self.writer = SRTWriter()
 
 
         self.logger.info(
@@ -221,9 +223,31 @@ class Pipeline:
             f"Segments: {len(segments)}"
         )
 
+        #
+        # Step 5
+        # generate srt
+        #
+
+        srt_file = (
+        video_file.parent /
+            (
+                video_file.stem
+                +
+                ".srt"
+            )
+        )
 
 
-        return segments
+        self.writer.write(
+            segments,
+            srt_file
+        )
+
+
+        return srt_file
+
+
+
 
 
     def detect_language(self, text):
