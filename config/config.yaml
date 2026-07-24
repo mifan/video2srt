@@ -1,12 +1,12 @@
 model:
   asr:
-    D:\Models\Qwen3-ASR-1.7B
+    C:\Users\mifan\workspaces\Models\Qwen3-ASR-1.7B
   aligner:
-    D:\Models\Qwen3-ForcedAligner
+    C:\Users\mifan\workspaces\Models\Qwen3-ForcedAligner
 
 ffmpeg:
   exe:
-    D:\ffmpeg\bin\ffmpeg.exe
+    C:\ffmpeg-8.1.2-full_build\bin\ffmpeg.exe
 
 device:
   auto

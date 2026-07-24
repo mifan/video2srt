@@ -4,6 +4,7 @@ from pathlib import Path
 from src.logger import setup_logger
 from src.pipeline import Pipeline
 
+from src.config import Config
 
 def main():
 
@@ -27,6 +28,14 @@ def main():
 
     video = Path(args.video)
 
+    config = Config(
+       "config/config.yaml"
+    )
+    
+    pipeline = Pipeline(
+        config
+    )
+
 
     if not video.exists():
 
@@ -37,7 +46,6 @@ def main():
         return 1
 
 
-    pipeline = Pipeline()
 
 
     pipeline.run(
