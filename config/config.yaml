@@ -14,3 +14,7 @@ device:
 subtitle:
   format:
     srt
+
+chunk:
+  seconds:
+    300
