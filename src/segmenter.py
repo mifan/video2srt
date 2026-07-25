@@ -1,6 +1,4 @@
 import logging
-import re
-
 
 
 class SubtitleSegmenter:
@@ -8,8 +6,7 @@ class SubtitleSegmenter:
 
     def __init__(
         self,
-        max_chars_per_line=22,
-        max_lines=2,
+        max_chars=24,
         max_duration=6.0,
         max_cps=15
     ):
@@ -19,23 +16,18 @@ class SubtitleSegmenter:
         )
 
 
-        self.max_chars_per_line = (
-            max_chars_per_line
-        )
+        # 单行最大长度
+        self.max_chars = max_chars
 
-        self.max_lines = max_lines
 
-        self.max_duration = (
-            max_duration
-        )
+        # 最大显示时间
+        self.max_duration = max_duration
 
+
+        # characters per second
         self.max_cps = max_cps
 
 
-
-    #
-    # 判断中文
-    #
 
     def is_chinese(
         self,
@@ -51,10 +43,6 @@ class SubtitleSegmenter:
 
 
 
-    #
-    # 计算字幕长度
-    #
-
     def text_length(
         self,
         text
@@ -65,16 +53,13 @@ class SubtitleSegmenter:
 
         for c in text:
 
-
             if self.is_chinese(c):
 
                 length += 1
 
-
             elif c.isalpha():
 
                 length += 0.5
-
 
             else:
 
@@ -85,15 +70,30 @@ class SubtitleSegmenter:
 
 
 
-    #
-    # 是否应该切割
-    #
-
     def should_split(
         self,
         text,
         duration
     ):
+
+
+        #
+        # 遇到句号等强标点
+        #
+
+        if text.endswith(
+            (
+                "。",
+                "！",
+                "？",
+                ".",
+                "!",
+                "?"
+            )
+        ):
+
+            return True
+
 
 
         #
@@ -107,7 +107,20 @@ class SubtitleSegmenter:
 
 
         #
-        # CPS过高
+        # 单行长度
+        #
+
+        if (
+            self.text_length(text)
+            >= self.max_chars
+        ):
+
+            return True
+
+
+
+        #
+        # 阅读速度
         #
 
         if duration > 0:
@@ -124,156 +137,10 @@ class SubtitleSegmenter:
 
 
 
-        #
-        # 长度
-        #
-
-        if (
-            self.text_length(text)
-            >=
-            self.max_chars_per_line * 2
-        ):
-
-            return True
-
-
-
-        #
-        # 标点
-        #
-
-        if text.endswith(
-
-            (
-                "。",
-                "！",
-                "？",
-                ".",
-                "!",
-                "?",
-                "；",
-                ";"
-
-            )
-
-        ):
-
-            return True
-
-
-
         return False
 
 
 
-
-    #
-    # 智能断行
-    #
-
-    def format_lines(
-        self,
-        text
-    ):
-
-
-        if (
-            self.text_length(text)
-            <=
-            self.max_chars_per_line
-        ):
-
-            return text
-
-
-
-        #
-        # 找最佳切割点
-        #
-
-        middle = len(text)//2
-
-
-
-        best = None
-
-
-        for i in range(
-
-            max(
-                0,
-                middle-10
-            ),
-
-            min(
-                len(text),
-                middle+10
-            )
-
-        ):
-
-
-            if text[i] in [
-
-                "，",
-                "。",
-                "！",
-                "？",
-                ",",
-                ".",
-                "!",
-                "?"
-
-            ]:
-
-                best=i+1
-
-                break
-
-
-
-        if best:
-
-
-            return (
-
-                text[:best]
-
-                +
-
-                "\n"
-
-                +
-
-                text[best:]
-
-            )
-
-
-
-        #
-        # 没找到标点
-        #
-
-        return (
-
-            text[:middle]
-
-            +
-
-            "\n"
-
-            +
-
-            text[middle:]
-
-        )
-
-
-
-    #
-    # 主入口
-    #
 
     def segment(
         self,
@@ -281,15 +148,14 @@ class SubtitleSegmenter:
     ):
 
 
-        items = (
-            align_result.items
-        )
+        items = align_result.items
 
 
         segments = []
 
 
         current = []
+
 
         start = None
 
@@ -315,7 +181,6 @@ class SubtitleSegmenter:
                 for x in current
 
             )
-
 
 
             duration = (
@@ -356,11 +221,10 @@ class SubtitleSegmenter:
 
 
         #
-        # 尾部
+        # 最后一段
         #
 
         if current:
-
 
             segments.append(
 
@@ -370,7 +234,6 @@ class SubtitleSegmenter:
                 )
 
             )
-
 
 
         return segments
@@ -402,10 +265,7 @@ class SubtitleSegmenter:
             "end":
                 items[-1].end_time,
 
-
             "text":
-                self.format_lines(
-                    text
-                )
+                text.strip()
 
         }
