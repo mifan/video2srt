@@ -1,4 +1,5 @@
 import logging
+import re
 
 
 
@@ -7,8 +8,10 @@ class SubtitleSegmenter:
 
     def __init__(
         self,
-        max_chars=20,
-        max_duration=5.0
+        max_chars_per_line=22,
+        max_lines=2,
+        max_duration=6.0,
+        max_cps=15
     ):
 
         self.logger = logging.getLogger(
@@ -16,11 +19,261 @@ class SubtitleSegmenter:
         )
 
 
-        self.max_chars = max_chars
+        self.max_chars_per_line = (
+            max_chars_per_line
+        )
 
-        self.max_duration = max_duration
+        self.max_lines = max_lines
+
+        self.max_duration = (
+            max_duration
+        )
+
+        self.max_cps = max_cps
 
 
+
+    #
+    # 判断中文
+    #
+
+    def is_chinese(
+        self,
+        ch
+    ):
+
+        return (
+            '\u4e00'
+            <= ch
+            <=
+            '\u9fff'
+        )
+
+
+
+    #
+    # 计算字幕长度
+    #
+
+    def text_length(
+        self,
+        text
+    ):
+
+        length = 0
+
+
+        for c in text:
+
+
+            if self.is_chinese(c):
+
+                length += 1
+
+
+            elif c.isalpha():
+
+                length += 0.5
+
+
+            else:
+
+                length += 0.5
+
+
+        return length
+
+
+
+    #
+    # 是否应该切割
+    #
+
+    def should_split(
+        self,
+        text,
+        duration
+    ):
+
+
+        #
+        # 时间过长
+        #
+
+        if duration >= self.max_duration:
+
+            return True
+
+
+
+        #
+        # CPS过高
+        #
+
+        if duration > 0:
+
+            cps = (
+                self.text_length(text)
+                /
+                duration
+            )
+
+            if cps > self.max_cps:
+
+                return True
+
+
+
+        #
+        # 长度
+        #
+
+        if (
+            self.text_length(text)
+            >=
+            self.max_chars_per_line * 2
+        ):
+
+            return True
+
+
+
+        #
+        # 标点
+        #
+
+        if text.endswith(
+
+            (
+                "。",
+                "！",
+                "？",
+                ".",
+                "!",
+                "?",
+                "；",
+                ";"
+
+            )
+
+        ):
+
+            return True
+
+
+
+        return False
+
+
+
+
+    #
+    # 智能断行
+    #
+
+    def format_lines(
+        self,
+        text
+    ):
+
+
+        if (
+            self.text_length(text)
+            <=
+            self.max_chars_per_line
+        ):
+
+            return text
+
+
+
+        #
+        # 找最佳切割点
+        #
+
+        middle = len(text)//2
+
+
+
+        best = None
+
+
+        for i in range(
+
+            max(
+                0,
+                middle-10
+            ),
+
+            min(
+                len(text),
+                middle+10
+            )
+
+        ):
+
+
+            if text[i] in [
+
+                "，",
+                "。",
+                "！",
+                "？",
+                ",",
+                ".",
+                "!",
+                "?"
+
+            ]:
+
+                best=i+1
+
+                break
+
+
+
+        if best:
+
+
+            return (
+
+                text[:best]
+
+                +
+
+                "\n"
+
+                +
+
+                text[best:]
+
+            )
+
+
+
+        #
+        # 没找到标点
+        #
+
+        return (
+
+            text[:middle]
+
+            +
+
+            "\n"
+
+            +
+
+            text[middle:]
+
+        )
+
+
+
+    #
+    # 主入口
+    #
 
     def segment(
         self,
@@ -28,118 +281,131 @@ class SubtitleSegmenter:
     ):
 
 
-        items = align_result.items
+        items = (
+            align_result.items
+        )
 
 
         segments = []
 
 
-        current_text = ""
+        current = []
 
-        start_time = None
-
-        end_time = None
+        start = None
 
 
 
         for item in items:
 
 
-            if start_time is None:
+            if start is None:
 
-                start_time = item.start_time
-
-
-
-            current_text += item.text
-
-
-            end_time = item.end_time
+                start = item.start_time
 
 
 
-            duration = (
-                end_time -
-                start_time
+            current.append(item)
+
+
+
+            text = "".join(
+
+                x.text
+
+                for x in current
+
             )
 
 
 
-            #
-            # 分割条件
-            #
+            duration = (
 
-            if (
+                item.end_time
 
-                len(current_text)
-                >= self.max_chars
+                -
 
-                or
+                start
+
+            )
+
+
+
+            if self.should_split(
+
+                text,
 
                 duration
-                >= self.max_duration
-
-                or
-
-                item.text in [
-                    "。",
-                    "！",
-                    "？",
-                    ".",
-                    "!",
-                    "?"
-                ]
 
             ):
 
 
                 segments.append(
 
-                    {
-
-                        "start":
-                            start_time,
-
-                        "end":
-                            end_time,
-
-                        "text":
-                            current_text
-
-                    }
+                    self.make_segment(
+                        current,
+                        start
+                    )
 
                 )
 
 
-                current_text = ""
+                current=[]
 
-                start_time = None
+                start=None
 
 
 
         #
-        # 剩余文本
+        # 尾部
         #
 
-        if current_text:
+        if current:
 
 
             segments.append(
 
-                {
-
-                    "start":
-                        start_time,
-
-                    "end":
-                        end_time,
-
-                    "text":
-                        current_text
-
-                }
+                self.make_segment(
+                    current,
+                    start
+                )
 
             )
 
 
+
         return segments
+
+
+
+
+    def make_segment(
+        self,
+        items,
+        start
+    ):
+
+
+        text = "".join(
+
+            x.text
+
+            for x in items
+
+        )
+
+
+        return {
+
+            "start":
+                start,
+
+            "end":
+                items[-1].end_time,
+
+
+            "text":
+                self.format_lines(
+                    text
+                )
+
+        }
