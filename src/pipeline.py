@@ -4,8 +4,8 @@ from pathlib import Path
 import torch
 
 
-from src.audio_splitter import AudioSplitter
 from src.ffmpeg_util import FFmpegExtractor
+from src.audio_splitter import AudioSplitter
 
 from src.qwen3_asr import Qwen3Recognizer
 from src.aligner import Qwen3Aligner
@@ -35,48 +35,54 @@ class Pipeline:
 
 
         #
-        # ffmpeg
+        # FFmpeg
         #
 
         self.extractor = FFmpegExtractor(
 
-            config["ffmpeg"]["path"]
+            config.get(
+                "ffmpeg",
+                "path"
+            )
 
         )
 
 
 
         #
-        # 音频切割
+        # Audio chunk splitter
         #
 
         self.splitter = AudioSplitter(
 
-            chunk_seconds=config
-                .get(
-                    "chunk",
-                    {}
-                )
-                .get(
-                    "seconds",
-                    300
-                )
+            chunk_seconds=config.get(
+
+                "chunk",
+                "seconds"
+
+            )
 
         )
 
 
 
         #
-        # ASR
+        # Qwen3-ASR
         #
 
         self.asr = Qwen3Recognizer(
 
-            model_path=config["models"]["asr"],
+            model_path=config.get(
+
+                "models",
+                "asr"
+
+            ),
 
             device=config.get(
-                "device",
-                "cuda:0"
+
+                "device"
+
             )
 
         )
@@ -84,16 +90,22 @@ class Pipeline:
 
 
         #
-        # Forced Align
+        # Qwen3 ForcedAligner
         #
 
         self.aligner = Qwen3Aligner(
 
-            model_path=config["models"]["aligner"],
+            model_path=config.get(
+
+                "models",
+                "aligner"
+
+            ),
 
             device=config.get(
-                "device",
-                "cuda:0"
+
+                "device"
+
             )
 
         )
@@ -101,14 +113,14 @@ class Pipeline:
 
 
         #
-        # 字幕切分
+        # Smart subtitle segmenter
         #
 
         self.segmenter = SubtitleSegmenter(
 
             max_chars=24,
 
-            max_duration=6,
+            max_duration=6.0,
 
             max_cps=15
 
@@ -117,7 +129,7 @@ class Pipeline:
 
 
         #
-        # 标点恢复
+        # punctuation restore
         #
 
         self.punctuation = PunctuationRestorer()
@@ -125,17 +137,16 @@ class Pipeline:
 
 
         #
-        # SRT
+        # SRT writer
         #
 
         self.writer = SRTWriter()
 
 
 
-    # =====================================================
-    # 主入口
-    # =====================================================
-
+    # ==================================================
+    # Main pipeline
+    # ==================================================
 
     def run(
         self,
@@ -150,14 +161,15 @@ class Pipeline:
 
         self.logger.info(
 
-            f"Start processing: {video_file}"
+            f"Processing: {video_file}"
 
         )
 
 
 
         #
-        # 1. 提取音频
+        # Step 1
+        # Extract audio
         #
 
         wav_file = self.extractor.extract(
@@ -169,7 +181,8 @@ class Pipeline:
 
 
         #
-        # 2. 切 chunk
+        # Step 2
+        # Split audio
         #
 
         chunks = self.splitter.split(
@@ -185,7 +198,8 @@ class Pipeline:
 
 
         #
-        # 逐 chunk 处理
+        # Step 3
+        # Process chunks
         #
 
         for index, chunk in enumerate(chunks):
@@ -193,16 +207,20 @@ class Pipeline:
 
             self.logger.info(
 
-                f"Processing chunk "
-                f"{index + 1}/{len(chunks)}"
+                f"Chunk {index + 1}/{len(chunks)}: {chunk}"
 
             )
 
 
 
+            #
+            # chunk start time
+            #
+
             offset = (
 
                 index *
+
                 self.splitter.chunk_seconds
 
             )
@@ -210,9 +228,9 @@ class Pipeline:
 
 
             #
-            # --------------------
+            # --------------------------
             # ASR
-            # --------------------
+            # --------------------------
             #
 
             asr_result = self.asr.transcribe(
@@ -222,15 +240,10 @@ class Pipeline:
             )
 
 
-            #
-            # 原始带标点文本
-            #
 
-            original_text = (
+            original_text = self.extract_text(
 
-                self.extract_text(
-                    asr_result
-                )
+                asr_result
 
             )
 
@@ -238,12 +251,20 @@ class Pipeline:
 
             if not original_text.strip():
 
+                self.logger.warning(
+
+                    "Empty ASR result, skip"
+
+                )
+
                 continue
 
 
 
             self.logger.info(
 
+                "ASR: "
+                +
                 original_text[:100]
 
             )
@@ -251,9 +272,9 @@ class Pipeline:
 
 
             #
-            # --------------------
-            # Forced Align
-            # --------------------
+            # --------------------------
+            # Forced Alignment
+            # --------------------------
             #
 
             align_result = self.aligner.align(
@@ -263,7 +284,9 @@ class Pipeline:
                 original_text,
 
                 self.detect_language(
+
                     original_text
+
                 )
 
             )
@@ -271,9 +294,9 @@ class Pipeline:
 
 
             #
-            # --------------------
-            # 字级 -> 字幕块
-            # --------------------
+            # --------------------------
+            # Generate subtitle blocks
+            # --------------------------
             #
 
             segments = self.segmenter.segment(
@@ -285,28 +308,24 @@ class Pipeline:
 
 
             #
-            # 标点恢复
+            # Restore punctuation
             #
 
             for seg in segments:
 
 
-                seg["text"] = (
+                seg["text"] = self.punctuation.restore(
 
-                    self.punctuation.restore(
+                    seg["text"],
 
-                        seg["text"],
-
-                        original_text
-
-                    )
+                    original_text
 
                 )
 
 
 
                 #
-                # chunk时间偏移
+                # add chunk offset
                 #
 
                 seg["start"] += offset
@@ -324,7 +343,7 @@ class Pipeline:
 
 
             #
-            # 清理GPU
+            # Release CUDA memory
             #
 
             self.cleanup_gpu()
@@ -332,46 +351,49 @@ class Pipeline:
 
 
         #
-        # 输出 SRT
+        # Step 4
+        # Write SRT
         #
 
-        srt_file = (
+        output_file = (
 
             video_file.parent /
 
             (
                 video_file.stem
+
                 +
+
                 ".srt"
+
             )
 
         )
-
 
 
         self.writer.write(
 
             all_segments,
 
-            srt_file
+            output_file
 
         )
 
 
         self.logger.info(
 
-            f"Finished: {srt_file}"
+            f"Finished: {output_file}"
 
         )
 
 
-        return srt_file
+        return output_file
 
 
 
-    # =====================================================
-    # 工具函数
-    # =====================================================
+    # ==================================================
+    # Helpers
+    # ==================================================
 
 
     def extract_text(
@@ -379,14 +401,10 @@ class Pipeline:
         result
     ):
 
+        """
+        Compatible with qwen-asr outputs
+        """
 
-        text = ""
-
-
-
-        #
-        # qwen-asr 输出兼容
-        #
 
         if isinstance(
             result,
@@ -394,6 +412,10 @@ class Pipeline:
         ):
 
             return result
+
+
+
+        text = ""
 
 
 
@@ -407,8 +429,11 @@ class Pipeline:
 
 
                 if hasattr(
+
                     item,
+
                     "text"
+
                 ):
 
                     text += item.text
@@ -416,14 +441,30 @@ class Pipeline:
 
 
                 elif isinstance(
+
                     item,
+
                     dict
+
                 ):
 
                     text += item.get(
+
                         "text",
+
                         ""
+
                     )
+
+
+
+        elif hasattr(
+            result,
+            "text"
+        ):
+
+            text = result.text
+
 
 
         return text
@@ -436,9 +477,9 @@ class Pipeline:
     ):
 
 
-        zh = 0
+        chinese = 0
 
-        en = 0
+        english = 0
 
 
 
@@ -446,22 +487,30 @@ class Pipeline:
 
 
             if (
+
                 '\u4e00'
-                <= c
+
                 <=
+
+                c
+
+                <=
+
                 '\u9fff'
+
             ):
 
-                zh += 1
+                chinese += 1
+
 
 
             elif c.isalpha():
 
-                en += 1
+                english += 1
 
 
 
-        if zh >= en:
+        if chinese >= english:
 
             return "Chinese"
 
