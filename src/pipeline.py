@@ -4,14 +4,16 @@ from pathlib import Path
 import torch
 
 
-from src.ffmpeg_util import FFmpegExtractor
 from src.audio_splitter import AudioSplitter
+from src.ffmpeg_util import FFmpegExtractor
 
 from src.qwen3_asr import Qwen3Recognizer
 from src.aligner import Qwen3Aligner
 
 from src.segmenter import SubtitleSegmenter
 from src.subtitle import SRTWriter
+
+from src.punctuation import PunctuationRestorer
 
 
 
@@ -23,7 +25,6 @@ class Pipeline:
         config
     ):
 
-
         self.logger = logging.getLogger(
             "video2srt"
         )
@@ -33,62 +34,107 @@ class Pipeline:
 
 
 
+        #
+        # ffmpeg
+        #
+
         self.extractor = FFmpegExtractor(
 
-            self.config.get(
-                "ffmpeg",
-                "exe"
-            )
+            config["ffmpeg"]["path"]
 
         )
 
 
+
+        #
+        # 音频切割
+        #
 
         self.splitter = AudioSplitter(
 
-            chunk_seconds=300
+            chunk_seconds=config
+                .get(
+                    "chunk",
+                    {}
+                )
+                .get(
+                    "seconds",
+                    300
+                )
 
         )
 
 
+
+        #
+        # ASR
+        #
 
         self.asr = Qwen3Recognizer(
 
-            self.config.get(
-                "model",
-                "asr"
-            ),
+            model_path=config["models"]["asr"],
 
-            self.config.get(
-                "device"
+            device=config.get(
+                "device",
+                "cuda:0"
             )
 
         )
 
 
+
+        #
+        # Forced Align
+        #
 
         self.aligner = Qwen3Aligner(
 
-            self.config.get(
-                "model",
-                "aligner"
-            ),
+            model_path=config["models"]["aligner"],
 
-            self.config.get(
-                "device"
+            device=config.get(
+                "device",
+                "cuda:0"
             )
 
         )
 
 
 
-        self.segmenter = SubtitleSegmenter()
+        #
+        # 字幕切分
+        #
+
+        self.segmenter = SubtitleSegmenter(
+
+            max_chars=24,
+
+            max_duration=6,
+
+            max_cps=15
+
+        )
 
 
+
+        #
+        # 标点恢复
+        #
+
+        self.punctuation = PunctuationRestorer()
+
+
+
+        #
+        # SRT
+        #
 
         self.writer = SRTWriter()
 
 
+
+    # =====================================================
+    # 主入口
+    # =====================================================
 
 
     def run(
@@ -103,31 +149,33 @@ class Pipeline:
 
 
         self.logger.info(
-            f"Processing {video_file}"
+
+            f"Start processing: {video_file}"
+
         )
 
 
 
         #
-        # Step 1
-        #
-        # extract wav
+        # 1. 提取音频
         #
 
-        wav = self.extractor.extract(
+        wav_file = self.extractor.extract(
+
             video_file
+
         )
 
 
 
         #
-        # Step 2
-        #
-        # split wav
+        # 2. 切 chunk
         #
 
         chunks = self.splitter.split(
-            wav
+
+            wav_file
+
         )
 
 
@@ -137,28 +185,34 @@ class Pipeline:
 
 
         #
-        # Step 3
-        #
-        # process chunk one by one
+        # 逐 chunk 处理
         #
 
         for index, chunk in enumerate(chunks):
 
 
             self.logger.info(
-                f"Processing chunk {index+1}/{len(chunks)}"
+
+                f"Processing chunk "
+                f"{index + 1}/{len(chunks)}"
+
             )
 
 
+
             offset = (
+
                 index *
                 self.splitter.chunk_seconds
+
             )
 
 
 
             #
+            # --------------------
             # ASR
+            # --------------------
             #
 
             asr_result = self.asr.transcribe(
@@ -168,31 +222,48 @@ class Pipeline:
             )
 
 
+            #
+            # 原始带标点文本
+            #
 
-            text = self.build_text(
-                asr_result
+            original_text = (
+
+                self.extract_text(
+                    asr_result
+                )
+
             )
 
 
 
-            if not text.strip():
+            if not original_text.strip():
 
                 continue
 
 
 
+            self.logger.info(
+
+                original_text[:100]
+
+            )
+
+
+
             #
+            # --------------------
             # Forced Align
+            # --------------------
             #
 
             align_result = self.aligner.align(
 
                 chunk,
 
-                text,
+                original_text,
 
                 self.detect_language(
-                    text
+                    original_text
                 )
 
             )
@@ -200,8 +271,9 @@ class Pipeline:
 
 
             #
-            # 字级时间
-            # 转字幕段
+            # --------------------
+            # 字级 -> 字幕块
+            # --------------------
             #
 
             segments = self.segmenter.segment(
@@ -213,40 +285,57 @@ class Pipeline:
 
 
             #
-            # 修正时间偏移
+            # 标点恢复
             #
 
             for seg in segments:
 
+
+                seg["text"] = (
+
+                    self.punctuation.restore(
+
+                        seg["text"],
+
+                        original_text
+
+                    )
+
+                )
+
+
+
+                #
+                # chunk时间偏移
+                #
 
                 seg["start"] += offset
 
                 seg["end"] += offset
 
 
+
                 all_segments.append(
+
                     seg
+
                 )
 
 
 
             #
-            # 清理显存
+            # 清理GPU
             #
 
-            if torch.cuda.is_available():
-
-                torch.cuda.empty_cache()
+            self.cleanup_gpu()
 
 
 
         #
-        # Step 4
-        #
-        # write srt
+        # 输出 SRT
         #
 
-        output = (
+        srt_file = (
 
             video_file.parent /
 
@@ -264,41 +353,77 @@ class Pipeline:
 
             all_segments,
 
-            output
+            srt_file
 
         )
 
 
-        return output
+        self.logger.info(
+
+            f"Finished: {srt_file}"
+
+        )
+
+
+        return srt_file
 
 
 
+    # =====================================================
+    # 工具函数
+    # =====================================================
 
-    def build_text(
+
+    def extract_text(
         self,
         result
     ):
 
+
         text = ""
 
 
-        for item in result:
+
+        #
+        # qwen-asr 输出兼容
+        #
+
+        if isinstance(
+            result,
+            str
+        ):
+
+            return result
 
 
-            if hasattr(
-                item,
-                "text"
-            ):
 
-                text += item.text
+        if isinstance(
+            result,
+            list
+        ):
 
 
-            elif isinstance(
-                item,
-                dict
-            ):
+            for item in result:
 
-                text += item["text"]
+
+                if hasattr(
+                    item,
+                    "text"
+                ):
+
+                    text += item.text
+
+
+
+                elif isinstance(
+                    item,
+                    dict
+                ):
+
+                    text += item.get(
+                        "text",
+                        ""
+                    )
 
 
         return text
@@ -311,22 +436,29 @@ class Pipeline:
     ):
 
 
-        zh = sum(
+        zh = 0
 
-            1 for c in text
-
-            if '\u4e00' <= c <= '\u9fff'
-
-        )
+        en = 0
 
 
-        en = sum(
 
-            1 for c in text
+        for c in text:
 
-            if c.isalpha()
 
-        )
+            if (
+                '\u4e00'
+                <= c
+                <=
+                '\u9fff'
+            ):
+
+                zh += 1
+
+
+            elif c.isalpha():
+
+                en += 1
+
 
 
         if zh >= en:
@@ -335,3 +467,14 @@ class Pipeline:
 
 
         return "English"
+
+
+
+    def cleanup_gpu(
+        self
+    ):
+
+
+        if torch.cuda.is_available():
+
+            torch.cuda.empty_cache()
