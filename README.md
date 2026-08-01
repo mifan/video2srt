@@ -20,7 +20,7 @@
 - Qwen3-ForcedAligner 本地模型目录
 - Python 依赖见 `requirements.txt`
 
-GPU 推理建议使用 NVIDIA CUDA。当前代码会在 `device: auto` 时检测 CUDA；检测到时使用 `cuda:0`，否则回退到 CPU。
+GPU 推理建议使用 NVIDIA CUDA。`device: auto` 会依次选择 CUDA、Apple Silicon MPS、CPU，并按设备选择安全的推理精度：CUDA 使用 BF16（支持时）或 FP16，MPS 使用 FP16，CPU 使用 FP32。
 
 ## Mac 开发环境
 
@@ -51,7 +51,7 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
 ### macOS 推理说明
 
-当前代码仅自动识别 CUDA，不会自动使用 Apple Silicon 的 MPS；同时模型加载固定使用 `torch.float16`。因此在 Mac 上直接进行完整推理可能失败、性能不理想，或需要修改业务代码后才可稳定支持。
+当前代码会自动尝试 Apple Silicon 的 MPS，并使用 FP16 推理。由于 Qwen3-ASR 与相关依赖在不同 Mac/PyTorch 版本上的兼容性可能不同，建议先用短视频验证；长视频推理仍推荐使用 Windows + NVIDIA CUDA 环境。
 
 推荐将 macOS 用作开发环境，把长视频推理放到下述 Windows + NVIDIA CUDA 环境执行。
 
@@ -92,6 +92,7 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    chunk:
      seconds: 300
+     overlap_seconds: 2
    ```
 
    若只在 GPU 机器上运行，也可以把 `device` 设为 `cuda:0`。
@@ -124,6 +125,7 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    chunk:
      seconds: 300
+     overlap_seconds: 2
    ```
 
    推荐使用上述规范键名。为兼容既有 `config/config.yaml`，配置加载器也接受旧的 `model` 和 `ffmpeg.exe` 键名，并自动转换为 `models` 和 `ffmpeg.path`。
@@ -163,8 +165,7 @@ python run.py /path/to/input.mp4 --config /path/to/config.yaml
 
 ## 当前代码限制
 
-- 音频按固定秒数切块，字幕时间偏移也按固定块长度计算；超长视频可能出现轻微时间漂移。
-- 切块不包含重叠区间，跨越块边界的词句可能影响识别或对齐质量。
+- 音频分块会记录真实起始时间，并默认提供 2 秒相邻重叠；完全相同且时间重叠的字幕会去重。识别文本存在差异时，边界附近仍可能出现相近的重复字幕。
 - 当前以 ASR 句子边界直接生成字幕，不会因字符数、时长或阅读速度再次拆分；特别长的 ASR 句子可能形成较长字幕。
 - ASR 和 ForcedAligner 会在任务启动时同时加载；显存不足时可能失败。
 - `subtitle.format` 配置项当前未接入，输出格式固定为 SRT。

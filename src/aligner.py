@@ -1,7 +1,6 @@
 import logging
-import torch
-
 from qwen_asr import Qwen3ForcedAligner
+from src.runtime import resolve_inference_runtime
 
 
 
@@ -19,13 +18,16 @@ class Qwen3Aligner:
         )
 
 
-        self.device = self.detect_device(
+        runtime = resolve_inference_runtime(
             device
         )
 
+        self.device = runtime.device
+        self.dtype = runtime.dtype
+
 
         self.logger.info(
-            f"ForcedAligner device: {self.device}"
+            f"ForcedAligner device: {self.device} ({self.dtype})"
         )
 
 
@@ -40,7 +42,7 @@ class Qwen3Aligner:
 
             device_map=self.device,
 
-            dtype=torch.float16
+            dtype=self.dtype
 
         )
 
@@ -48,27 +50,6 @@ class Qwen3Aligner:
         self.logger.info(
             "Qwen3-ForcedAligner loaded"
         )
-
-
-
-    def detect_device(
-        self,
-        device
-    ):
-
-        if device != "auto":
-
-            return device
-
-
-        if torch.cuda.is_available():
-
-            return "cuda:0"
-
-
-        return "cpu"
-
-
 
     def align(
         self,

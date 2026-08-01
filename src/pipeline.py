@@ -58,6 +58,13 @@ class Pipeline:
 
             ),
 
+            overlap_seconds=config.get(
+
+                "chunk",
+                "overlap_seconds"
+
+            ),
+
             ffmpeg_path=config.get(
 
                 "ffmpeg",
@@ -200,7 +207,7 @@ class Pipeline:
 
             self.logger.info(
 
-                f"Chunk {index + 1}/{len(chunks)}: {chunk}"
+                f"Chunk {index + 1}/{len(chunks)}: {chunk.path}"
 
             )
 
@@ -210,13 +217,7 @@ class Pipeline:
             # chunk start time
             #
 
-            offset = (
-
-                index *
-
-                self.splitter.chunk_seconds
-
-            )
+            offset = chunk.start_time
 
 
 
@@ -228,7 +229,7 @@ class Pipeline:
 
             asr_result = self.asr.transcribe(
 
-                chunk
+                chunk.path
 
             )
 
@@ -272,7 +273,7 @@ class Pipeline:
 
             align_result = self.aligner.align(
 
-                chunk,
+                chunk.path,
 
                 original_text,
 
@@ -351,6 +352,14 @@ class Pipeline:
             )
 
         )
+
+
+        all_segments = self._deduplicate_overlap_segments(
+
+            all_segments
+
+        )
+
 
 
         self.writer.write(
@@ -450,6 +459,39 @@ class Pipeline:
 
 
         return text
+
+
+    @staticmethod
+    def _deduplicate_overlap_segments(segments):
+        """Remove duplicate cues produced by neighboring overlapping chunks."""
+
+        deduplicated = []
+
+        for segment in segments:
+            if not deduplicated:
+                deduplicated.append(segment)
+                continue
+
+            previous = deduplicated[-1]
+            same_text = (
+                "".join(previous["text"].split())
+                == "".join(segment["text"].split())
+            )
+            overlaps = (
+                min(previous["end"], segment["end"])
+                > max(previous["start"], segment["start"])
+            )
+
+            if same_text and overlaps:
+                previous_duration = previous["end"] - previous["start"]
+                segment_duration = segment["end"] - segment["start"]
+                if segment_duration > previous_duration:
+                    deduplicated[-1] = segment
+                continue
+
+            deduplicated.append(segment)
+
+        return deduplicated
 
 
 

@@ -12,6 +12,7 @@ device: cuda:0
 
 chunk:
   seconds: 300
+  overlap_seconds: 2
 
 subtitle:
   format: srt

@@ -14,6 +14,7 @@ DEFAULT_CONFIG = {
     },
     "chunk": {
         "seconds": 300,
+        "overlap_seconds": 2,
     },
 }
 

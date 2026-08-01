@@ -1,7 +1,6 @@
 import logging
-import torch
-
 from qwen_asr import Qwen3ASRModel
+from src.runtime import resolve_inference_runtime
 
 
 class Qwen3Recognizer:
@@ -18,13 +17,16 @@ class Qwen3Recognizer:
         )
 
 
-        self.device = self.detect_device(
+        runtime = resolve_inference_runtime(
             device
         )
 
+        self.device = runtime.device
+        self.dtype = runtime.dtype
+
 
         self.logger.info(
-            f"Using device: {self.device}"
+            f"Using device: {self.device} ({self.dtype})"
         )
 
 
@@ -37,7 +39,7 @@ class Qwen3Recognizer:
 
             model_path,
 
-            dtype=torch.float16,
+            dtype=self.dtype,
 
             device_map=self.device
 
@@ -47,36 +49,6 @@ class Qwen3Recognizer:
         self.logger.info(
             "Qwen3-ASR loaded"
         )
-
-
-
-    def detect_device(
-        self,
-        device
-    ):
-
-        if device != "auto":
-
-            return device
-
-
-        if torch.cuda.is_available():
-
-            gpu = torch.cuda.get_device_name(
-                0
-            )
-
-            self.logger.info(
-                f"CUDA GPU detected: {gpu}"
-            )
-
-
-            return "cuda:0"
-
-
-        return "cpu"
-
-
 
     def transcribe(
         self,

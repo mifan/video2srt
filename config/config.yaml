@@ -14,3 +14,4 @@ subtitle:
 
 chunk:
   seconds: 300
+  overlap_seconds: 2
