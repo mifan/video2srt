@@ -13,10 +13,6 @@ from src.aligner import Qwen3Aligner
 from src.segmenter import SubtitleSegmenter
 from src.subtitle import SRTWriter
 
-from src.punctuation import PunctuationRestorer
-
-
-
 class Pipeline:
 
 
@@ -132,16 +128,6 @@ class Pipeline:
             max_cps=15
 
         )
-
-
-
-        #
-        # punctuation restore
-        #
-
-        self.punctuation = PunctuationRestorer()
-
-
 
         #
         # SRT writer
@@ -308,26 +294,15 @@ class Pipeline:
 
             segments = self.segmenter.segment(
 
-                align_result
+                align_result,
+
+                original_text
 
             )
 
 
 
-            #
-            # Restore punctuation
-            #
-
             for seg in segments:
-
-
-                seg["text"] = self.punctuation.restore(
-
-                    seg["text"],
-
-                    original_text
-
-                )
 
 
 
