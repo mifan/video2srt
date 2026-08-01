@@ -90,9 +90,16 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    device: auto
 
+   language: auto
+
    chunk:
      seconds: 300
      overlap_seconds: 2
+
+   subtitle:
+     max_chars: 24
+     max_duration_seconds: 6.0
+     max_cps: 15
    ```
 
    若只在 GPU 机器上运行，也可以把 `device` 设为 `cuda:0`。
@@ -123,9 +130,16 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    device: auto
 
+   language: auto
+
    chunk:
      seconds: 300
      overlap_seconds: 2
+
+   subtitle:
+     max_chars: 24
+     max_duration_seconds: 6.0
+     max_cps: 15
    ```
 
    推荐使用上述规范键名。为兼容既有 `config/config.yaml`，配置加载器也接受旧的 `model` 和 `ffmpeg.exe` 键名，并自动转换为 `models` 和 `ffmpeg.path`。
@@ -156,17 +170,20 @@ python run.py /path/to/input.mp4 --config /path/to/config.yaml
 - `temp/`：提取的 WAV 音频与分块音频；
 - `logs/video2srt.log`：运行日志。
 
-## 字幕生成规则
+## 字幕质量
 
-- Qwen3-ASR 输出的 `。！？!?；;…` 被视为句子边界；每个 ASR 句子对应一条 SRT 字幕。
-- 字幕文本直接保留 Qwen3-ASR 识别出的原始标点，不再根据 ForcedAligner 结果补标点。
-- Qwen3 ForcedAligner 只负责为每个句子映射起止时间。
-- 若 ASR 文本与强制对齐文本存在差异，程序会记录警告，并尽可能保留可用的时间范围。
+- 文本与标点：字幕直接采用 Qwen3-ASR 的原始文本；`。！？!?；;…` 被视为句子边界，因此每个 ASR 句子对应一条 SRT 字幕。
+- 时间戳：Qwen3 ForcedAligner 只负责映射每句的起止时间，不会改写字幕文本。映射时按顺序匹配 ASR 文本与对齐文本，而不是只按字符数推算。
+- 边界保护：音频块默认有 2 秒重叠；完全相同且时间重叠的字幕会自动去重，以降低跨块重复或截断的概率。
+- 差异处理：若 ASR 与对齐文本存在局部差异，程序会记录警告，并以已匹配字符计算时间；完全无法匹配时才会使用比例估算。
+- 长句切分：当一句 ASR 文本超过 `subtitle.max_chars` 或 `subtitle.max_duration_seconds` 时，会优先在逗号、顿号、冒号或空格处进行二级切分，并使用 ForcedAligner 的条目时间为子句定位。
+- 语言：`language: auto` 时优先使用 Qwen3-ASR 返回的语言字段；也可设为如 `Chinese` 或 `English`，同时约束 ASR 与 ForcedAligner。
+
+二级切分会尽量满足长度和时长限制。CPS 反映原始说话速度，单纯拆分不能从根本降低它；当字幕超过 `subtitle.max_cps` 时，程序会记录警告，便于后续针对静音区扩展显示时间或人工复核。
 
 ## 当前代码限制
 
 - 音频分块会记录真实起始时间，并默认提供 2 秒相邻重叠；完全相同且时间重叠的字幕会去重。识别文本存在差异时，边界附近仍可能出现相近的重复字幕。
-- 当前以 ASR 句子边界直接生成字幕，不会因字符数、时长或阅读速度再次拆分；特别长的 ASR 句子可能形成较长字幕。
 - ASR 和 ForcedAligner 会在任务启动时同时加载；显存不足时可能失败。
 - `subtitle.format` 配置项当前未接入，输出格式固定为 SRT。
 
@@ -187,7 +204,6 @@ video2srt/
     ├── audio_splitter.py      # WAV 音频分块
     ├── qwen3_asr.py           # Qwen3-ASR 模型封装
     ├── aligner.py             # Qwen3 ForcedAligner 封装
-    ├── punctuation.py         # 旧版标点恢复实现（当前主流程不使用）
     ├── segmenter.py           # ASR 句子边界与对齐时间映射
     └── subtitle.py            # SRT 写入
 ```

@@ -12,9 +12,15 @@ ffmpeg:
 # auto selects CUDA when available; otherwise the current code falls back to CPU.
 device: auto
 
+# auto uses Qwen3-ASR's detected language. Set e.g. Chinese or English to force it.
+language: auto
+
 chunk:
   seconds: 300
   overlap_seconds: 2
 
 subtitle:
   format: srt
+  max_chars: 24
+  max_duration_seconds: 6.0
+  max_cps: 15

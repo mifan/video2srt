@@ -6,6 +6,7 @@ from difflib import SequenceMatcher
 class SubtitleSegmenter:
 
     SENTENCE_ENDINGS = frozenset("。！？!?；;…")
+    WEAK_BREAKS = frozenset("，,、:： \t\n")
 
     def __init__(self, max_chars=24, max_duration=6.0, max_cps=15):
         self.logger = logging.getLogger("video2srt")
@@ -106,11 +107,14 @@ class SubtitleSegmenter:
                 )
                 continue
 
-            segments.append({
-                "start": items[start_item].start_time,
-                "end": items[end_item].end_time,
-                "text": sentence,
-            })
+            segments.extend(
+                self._split_long_sentence(
+                    sentence,
+                    items,
+                    start_item,
+                    end_item,
+                )
+            )
             last_end_item = end_item
 
         if last_end_item < len(items) - 1 and segments:
@@ -118,6 +122,131 @@ class SubtitleSegmenter:
             segments[-1]["end"] = items[-1].end_time
 
         return segments
+
+    def _split_long_sentence(self, sentence, items, start_item, end_item):
+        """Apply a second split only when one ASR sentence is too long."""
+        duration = items[end_item].end_time - items[start_item].start_time
+        if (
+            self._text_length(sentence) <= self.max_chars
+            and duration <= self.max_duration
+        ):
+            self._warn_if_fast(sentence, duration)
+            return [{
+                "start": items[start_item].start_time,
+                "end": items[end_item].end_time,
+                "text": sentence,
+            }]
+
+        parts = self._split_text_at_natural_boundaries(sentence, duration)
+        if len(parts) == 1:
+            self.logger.warning(
+                "Long ASR sentence has no natural split point: %s",
+                sentence,
+            )
+
+        available_items = end_item - start_item + 1
+        while len(parts) > available_items:
+            parts[-2] = f"{parts[-2]}{parts[-1]}"
+            parts.pop()
+
+        segments = []
+        item_index = start_item
+
+        for part_index, part in enumerate(parts):
+            if part_index == len(parts) - 1:
+                part_end_item = end_item
+            else:
+                target_length = max(1, len(self._normalise_for_alignment(part)))
+                part_start_item = item_index
+                collected_length = 0
+                last_assignable_item = end_item - (
+                    len(parts) - part_index - 1
+                )
+
+                while item_index <= last_assignable_item:
+                    collected_length += len(
+                        self._normalise_for_alignment(items[item_index].text)
+                    )
+                    item_index += 1
+                    if collected_length >= target_length:
+                        break
+
+                part_end_item = max(part_start_item, item_index - 1)
+
+            part_duration = (
+                items[part_end_item].end_time
+                - items[item_index if part_index == len(parts) - 1 else part_start_item]
+                .start_time
+            )
+            self._warn_if_fast(part, part_duration)
+            segments.append({
+                "start": items[
+                    item_index if part_index == len(parts) - 1 else part_start_item
+                ].start_time,
+                "end": items[part_end_item].end_time,
+                "text": part,
+            })
+            item_index = part_end_item + 1
+
+        return segments
+
+    def _split_text_at_natural_boundaries(self, text, total_duration):
+        parts = []
+        remaining = text.strip()
+        full_length = max(self._text_length(remaining), 1)
+
+        while remaining:
+            remaining_length = self._text_length(remaining)
+            remaining_duration = total_duration * remaining_length / full_length
+
+            if not self._needs_secondary_split(remaining, remaining_duration):
+                parts.append(remaining)
+                break
+
+            break_at = None
+            current_length = 0
+            total_length = max(remaining_length, 1)
+
+            for index, char in enumerate(remaining):
+                current_length += self._text_length(char)
+                estimated_duration = (
+                    remaining_duration * current_length / total_length
+                )
+
+                if char in self.WEAK_BREAKS:
+                    break_at = index + 1
+
+                if (
+                    current_length >= self.max_chars
+                    or estimated_duration >= self.max_duration
+                ):
+                    break
+
+            cut_at = break_at or index + 1
+            part = remaining[:cut_at].strip()
+            if not part or cut_at >= len(remaining):
+                parts.append(remaining)
+                break
+
+            parts.append(part)
+            remaining = remaining[cut_at:].strip()
+
+        return parts
+
+    def _needs_secondary_split(self, text, duration):
+        return (
+            self._text_length(text) > self.max_chars
+            or duration > self.max_duration
+        )
+
+    def _warn_if_fast(self, text, duration):
+        if duration > 0 and self._text_length(text) / duration > self.max_cps:
+            self.logger.warning(
+                "Subtitle exceeds max CPS (%.1f > %.1f): %s",
+                self._text_length(text) / duration,
+                self.max_cps,
+                text,
+            )
 
     def _build_sentence_specs(self, sentences):
         specs = []

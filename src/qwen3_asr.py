@@ -52,7 +52,8 @@ class Qwen3Recognizer:
 
     def transcribe(
         self,
-        audio_file
+        audio_file,
+        language=None
     ):
 
         self.logger.info(
@@ -60,9 +61,16 @@ class Qwen3Recognizer:
         )
 
 
+        options = {
+            "audio": str(audio_file),
+        }
+
+        if language and language.lower() != "auto":
+            options["language"] = language
+
         result = self.model.transcribe(
 
-            audio=str(audio_file)
+            **options
 
         )
 

@@ -11,7 +11,11 @@ DEFAULT_CONFIG = {
     "device": "auto",
     "subtitle": {
         "format": "srt",
+        "max_chars": 24,
+        "max_duration_seconds": 6.0,
+        "max_cps": 15,
     },
+    "language": "auto",
     "chunk": {
         "seconds": 300,
         "overlap_seconds": 2,

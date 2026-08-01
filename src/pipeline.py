@@ -28,6 +28,12 @@ class Pipeline:
 
         self.config = config
 
+        self.language = config.get(
+
+            "language"
+
+        )
+
 
 
         #
@@ -128,11 +134,26 @@ class Pipeline:
 
         self.segmenter = SubtitleSegmenter(
 
-            max_chars=24,
+            max_chars=config.get(
 
-            max_duration=6.0,
+                "subtitle",
+                "max_chars"
 
-            max_cps=15
+            ),
+
+            max_duration=config.get(
+
+                "subtitle",
+                "max_duration_seconds"
+
+            ),
+
+            max_cps=config.get(
+
+                "subtitle",
+                "max_cps"
+
+            )
 
         )
 
@@ -229,7 +250,9 @@ class Pipeline:
 
             asr_result = self.asr.transcribe(
 
-                chunk.path
+                chunk.path,
+
+                self.language
 
             )
 
@@ -277,7 +300,9 @@ class Pipeline:
 
                 original_text,
 
-                self.detect_language(
+                self.resolve_language(
+
+                    asr_result,
 
                     original_text
 
@@ -540,6 +565,48 @@ class Pipeline:
 
 
         return "English"
+
+
+    def resolve_language(
+        self,
+        asr_result,
+        text
+    ):
+        """Prefer explicit configuration, then Qwen3-ASR language detection."""
+
+        if self.language and self.language.lower() != "auto":
+            return self.language
+
+        detected = self.extract_result_language(asr_result)
+        if detected:
+            self.logger.info(
+                f"ASR detected language: {detected}"
+            )
+            return detected
+
+        fallback = self.detect_language(text)
+        self.logger.warning(
+            f"ASR language unavailable; using heuristic: {fallback}"
+        )
+        return fallback
+
+
+    @staticmethod
+    def extract_result_language(result):
+        """Read the language field from qwen-asr object or dictionary results."""
+
+        candidates = result if isinstance(result, list) else [result]
+
+        for item in candidates:
+            if isinstance(item, dict):
+                language = item.get("language")
+            else:
+                language = getattr(item, "language", None)
+
+            if language:
+                return str(language)
+
+        return None
 
 
 
