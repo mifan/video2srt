@@ -10,7 +10,8 @@ class AudioSplitter:
     def __init__(
         self,
         chunk_seconds=300,
-        temp_dir="temp/chunks"
+        temp_dir="temp/chunks",
+        ffmpeg_path="ffmpeg"
     ):
 
         self.logger = logging.getLogger(
@@ -19,6 +20,11 @@ class AudioSplitter:
 
 
         self.chunk_seconds = chunk_seconds
+
+
+        self.ffmpeg = str(
+            ffmpeg_path
+        )
 
 
         self.output_dir = Path(
@@ -69,7 +75,7 @@ class AudioSplitter:
 
         cmd = [
 
-            "ffmpeg",
+            self.ffmpeg,
 
             "-y",
 

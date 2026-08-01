@@ -60,6 +60,13 @@ class Pipeline:
                 "chunk",
                 "seconds"
 
+            ),
+
+            ffmpeg_path=config.get(
+
+                "ffmpeg",
+                "path"
+
             )
 
         )

@@ -1,0 +1,17 @@
+# Windows + NVIDIA CUDA configuration.
+# Invoke with: python run.py input.mp4 --config config/config.windows.yaml
+
+models:
+  asr: 'C:\Models\Qwen3-ASR-1.7B'
+  aligner: 'C:\Models\Qwen3-ForcedAligner'
+
+ffmpeg:
+  path: 'C:\ffmpeg\bin\ffmpeg.exe'
+
+device: cuda:0
+
+chunk:
+  seconds: 300
+
+subtitle:
+  format: srt

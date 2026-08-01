@@ -1,0 +1,19 @@
+# Copy this file to config/config.yaml (or pass it with --config) and fill in
+# the local model paths. Relative paths are resolved from the current directory.
+
+models:
+  asr: /absolute/path/to/Qwen3-ASR-1.7B
+  aligner: /absolute/path/to/Qwen3-ForcedAligner
+
+# "ffmpeg" uses the executable available in PATH by default.
+ffmpeg:
+  path: ffmpeg
+
+# auto selects CUDA when available; otherwise the current code falls back to CPU.
+device: auto
+
+chunk:
+  seconds: 300
+
+subtitle:
+  format: srt

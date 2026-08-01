@@ -82,11 +82,11 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    ```yaml
    models:
-     asr: C:\\Models\\Qwen3-ASR-1.7B
-     aligner: C:\\Models\\Qwen3-ForcedAligner
+     asr: 'C:\Models\Qwen3-ASR-1.7B'
+     aligner: 'C:\Models\Qwen3-ForcedAligner'
 
    ffmpeg:
-     path: C:\\ffmpeg\\bin\\ffmpeg.exe
+     path: 'C:\ffmpeg\bin\ffmpeg.exe'
 
    device: auto
 
@@ -108,7 +108,7 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
 2. 创建虚拟环境并安装依赖（命令请按 macOS 或 Windows 章节选择）。
 
-3. 编辑 `config/config.yaml`，填写本机模型和 FFmpeg 路径。
+3. 以 `config/config.example.yaml` 为基础创建或编辑配置文件，填写本机模型和 FFmpeg 路径。Windows CUDA 环境可直接复制并修改 `config/config.windows.yaml`。
 
 4. 核对配置键名。当前 `Pipeline` 实际读取的是：
 
@@ -126,7 +126,7 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
      seconds: 300
    ```
 
-   仓库当前的 `config/config.yaml` 使用了 `model` 和 `ffmpeg.exe`，与代码要求的 `models` 和 `ffmpeg.path` 不一致。运行前须手动将配置调整为以上结构；否则初始化会因缺少键而失败。
+   推荐使用上述规范键名。为兼容既有 `config/config.yaml`，配置加载器也接受旧的 `model` 和 `ffmpeg.exe` 键名，并自动转换为 `models` 和 `ffmpeg.path`。
 
 ## 使用方法
 
