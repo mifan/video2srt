@@ -7,10 +7,10 @@
 ```text
 视频文件 → FFmpeg 提取 16 kHz 单声道 WAV → 音频分块
          → Qwen3-ASR 识别 → Qwen3 ForcedAligner 强制对齐
-         → 字幕分段与标点恢复 → SRT 文件
+         → 按 ASR 句子边界生成字幕 → SRT 文件
 ```
 
-> 当前仓库仍处于原型阶段。开始前请阅读本文的“当前代码限制”，尤其是配置键名不一致和 macOS 推理限制。
+> 当前仓库仍处于原型阶段。开始前请阅读本文的“当前代码限制”，尤其是 macOS 推理限制。
 
 ## 环境要求
 
@@ -154,11 +154,18 @@ python run.py /path/to/input.mp4 --config /path/to/config.yaml
 - `temp/`：提取的 WAV 音频与分块音频；
 - `logs/video2srt.log`：运行日志。
 
+## 字幕生成规则
+
+- Qwen3-ASR 输出的 `。！？!?；;…` 被视为句子边界；每个 ASR 句子对应一条 SRT 字幕。
+- 字幕文本直接保留 Qwen3-ASR 识别出的原始标点，不再根据 ForcedAligner 结果补标点。
+- Qwen3 ForcedAligner 只负责为每个句子映射起止时间。
+- 若 ASR 文本与强制对齐文本存在差异，程序会记录警告，并尽可能保留可用的时间范围。
+
 ## 当前代码限制
 
 - 音频按固定秒数切块，字幕时间偏移也按固定块长度计算；超长视频可能出现轻微时间漂移。
 - 切块不包含重叠区间，跨越块边界的词句可能影响识别或对齐质量。
-- `AudioSplitter` 直接调用 `ffmpeg` 命令，而不是复用 `ffmpeg.path`；因此 FFmpeg 仍应加入系统 `PATH`。
+- 当前以 ASR 句子边界直接生成字幕，不会因字符数、时长或阅读速度再次拆分；特别长的 ASR 句子可能形成较长字幕。
 - ASR 和 ForcedAligner 会在任务启动时同时加载；显存不足时可能失败。
 - `subtitle.format` 配置项当前未接入，输出格式固定为 SRT。
 
@@ -179,7 +186,7 @@ video2srt/
     ├── audio_splitter.py      # WAV 音频分块
     ├── qwen3_asr.py           # Qwen3-ASR 模型封装
     ├── aligner.py             # Qwen3 ForcedAligner 封装
-    ├── punctuation.py         # 标点恢复
-    ├── segmenter.py           # 字幕分段
+    ├── punctuation.py         # 旧版标点恢复实现（当前主流程不使用）
+    ├── segmenter.py           # ASR 句子边界与对齐时间映射
     └── subtitle.py            # SRT 写入
 ```
