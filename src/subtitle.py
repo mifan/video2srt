@@ -52,9 +52,12 @@ class SRTWriter:
                     f"Subtitle cue {source_index} starts before zero"
                 )
             if end_ms <= start_ms:
-                raise ValueError(
-                    f"Subtitle cue {source_index} must end after it starts"
+                self.logger.warning(
+                    "Skipped zero-duration subtitle cue %d: %s",
+                    source_index,
+                    text,
                 )
+                continue
 
             normalized.append({
                 "start_ms": start_ms,

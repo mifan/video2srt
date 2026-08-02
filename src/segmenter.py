@@ -156,11 +156,12 @@ class SubtitleSegmenter:
 
             part_duration = items[part_end].end_time - items[part_start].start_time
             self._warn_if_fast(text, part_duration)
-            segments.append({
-                "start": items[part_start].start_time,
-                "end": items[part_end].end_time,
-                "text": text,
-            })
+            self._append_segment(
+                segments,
+                items[part_start].start_time,
+                items[part_end].end_time,
+                text,
+            )
             last_part_end = part_end
 
         return segments
@@ -194,12 +195,28 @@ class SubtitleSegmenter:
             parts.append(part)
             remaining = remaining[cut_at:].strip()
 
-        specs, offset = [], 0
+        merged_parts = []
         for part in parts:
+            if not self._normalise_for_alignment(part) and merged_parts:
+                merged_parts[-1] += part
+            elif self._normalise_for_alignment(part):
+                merged_parts.append(part)
+
+        specs, offset = [], 0
+        for part in merged_parts:
             length = len(self._normalise_for_alignment(part))
             specs.append((part, offset, offset + length))
             offset += length
         return specs
+
+    def _append_segment(self, segments, start, end, text):
+        if end <= start:
+            self.logger.warning(
+                "Skipping zero-duration subtitle from forced alignment: %s",
+                text,
+            )
+            return
+        segments.append({"start": start, "end": end, "text": text})
 
     @staticmethod
     def _item_range_for_source_span(start, end, source_to_alignment, char_to_item):
@@ -274,10 +291,16 @@ class SubtitleSegmenter:
             current.append(item)
             text = "".join(entry.text for entry in current)
             if not self._fits_subtitle(text, item.end_time - start):
-                segments.append(self._make_segment(current, start))
+                segment = self._make_segment(current, start)
+                self._append_segment(
+                    segments, segment["start"], segment["end"], segment["text"]
+                )
                 current, start = [], None
         if current:
-            segments.append(self._make_segment(current, start))
+            segment = self._make_segment(current, start)
+            self._append_segment(
+                segments, segment["start"], segment["end"], segment["text"]
+            )
         return segments
 
     def _text_length(self, text):
