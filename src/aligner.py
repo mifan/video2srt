@@ -1,6 +1,6 @@
 import logging
 from qwen_asr import Qwen3ForcedAligner
-from src.runtime import resolve_inference_runtime
+from src.runtime import release_accelerator_memory, resolve_inference_runtime
 
 
 
@@ -31,25 +31,30 @@ class Qwen3Aligner:
         )
 
 
-        self.logger.info(
-            "Loading Qwen3-ForcedAligner..."
-        )
+        self.model_path = model_path
+        self.model = None
 
 
+    def load(self):
+        if self.model is not None:
+            return
+
+        self.logger.info("Loading Qwen3-ForcedAligner...")
         self.model = Qwen3ForcedAligner.from_pretrained(
-
-            model_path,
-
+            self.model_path,
             device_map=self.device,
-
-            dtype=self.dtype
-
+            dtype=self.dtype,
         )
+        self.logger.info("Qwen3-ForcedAligner loaded")
 
 
-        self.logger.info(
-            "Qwen3-ForcedAligner loaded"
-        )
+    def release(self):
+        if self.model is None:
+            return
+
+        self.logger.info("Releasing Qwen3-ForcedAligner model")
+        self.model = None
+        release_accelerator_memory()
 
     def align(
         self,
@@ -69,6 +74,8 @@ class Qwen3Aligner:
             Chinese / English
         """
 
+
+        self.load()
 
         self.logger.info(
             "Running forced alignment..."

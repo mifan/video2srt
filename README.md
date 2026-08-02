@@ -57,7 +57,7 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
 ## Windows CUDA 推理环境
 
-建议使用 NVIDIA GPU（显存容量须同时满足 ASR 与 ForcedAligner 的模型加载需求）以及已正确安装的 NVIDIA 驱动和 CUDA 兼容版 PyTorch。
+建议使用 NVIDIA GPU（显存容量须满足单个 ASR 或 ForcedAligner 模型的加载需求）以及已正确安装的 NVIDIA 驱动和 CUDA 兼容版 PyTorch。两个模型不会同时驻留显存。
 
 1. 安装 Python 3.10 或 3.11，以及包含 `ffmpeg.exe` 的 FFmpeg 发行版。
 
@@ -184,7 +184,7 @@ python run.py /path/to/input.mp4 --config /path/to/config.yaml
 ## 当前代码限制
 
 - 音频分块会记录真实起始时间，并默认提供 2 秒相邻重叠；完全相同且时间重叠的字幕会去重。识别文本存在差异时，边界附近仍可能出现相近的重复字幕。
-- ASR 和 ForcedAligner 会在任务启动时同时加载；显存不足时可能失败。
+- ASR 与 ForcedAligner 采用惰性加载：先完成全部 ASR 并释放其显存，再加载 ForcedAligner 完成对齐。单个模型仍须能独立装入显存。
 - `subtitle.format` 配置项当前未接入，输出格式固定为 SRT。
 
 ## 项目结构

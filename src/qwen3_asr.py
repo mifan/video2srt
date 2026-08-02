@@ -1,6 +1,6 @@
 import logging
 from qwen_asr import Qwen3ASRModel
-from src.runtime import resolve_inference_runtime
+from src.runtime import release_accelerator_memory, resolve_inference_runtime
 
 
 class Qwen3Recognizer:
@@ -30,31 +30,38 @@ class Qwen3Recognizer:
         )
 
 
-        self.logger.info(
-            "Loading Qwen3-ASR model..."
-        )
+        self.model_path = model_path
+        self.model = None
 
 
+    def load(self):
+        if self.model is not None:
+            return
+
+        self.logger.info("Loading Qwen3-ASR model...")
         self.model = Qwen3ASRModel.from_pretrained(
-
-            model_path,
-
+            self.model_path,
             dtype=self.dtype,
-
-            device_map=self.device
-
+            device_map=self.device,
         )
+        self.logger.info("Qwen3-ASR loaded")
 
 
-        self.logger.info(
-            "Qwen3-ASR loaded"
-        )
+    def release(self):
+        if self.model is None:
+            return
+
+        self.logger.info("Releasing Qwen3-ASR model")
+        self.model = None
+        release_accelerator_memory()
 
     def transcribe(
         self,
         audio_file,
         language=None
     ):
+
+        self.load()
 
         self.logger.info(
             f"Recognizing: {audio_file}"

@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+import gc
 
 import torch
 
@@ -50,3 +51,17 @@ def _cuda_supports_bfloat16():
 def _mps_is_available():
     mps = getattr(torch.backends, "mps", None)
     return bool(mps and mps.is_available())
+
+
+def release_accelerator_memory():
+    """Collect Python objects and return cached accelerator memory when possible."""
+    gc.collect()
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        return
+
+    mps = getattr(torch, "mps", None)
+    empty_cache = getattr(mps, "empty_cache", None)
+    if empty_cache:
+        empty_cache()

@@ -1,9 +1,6 @@
 import logging
 from pathlib import Path
 
-import torch
-
-
 from src.ffmpeg_util import FFmpegExtractor
 from src.audio_splitter import AudioSplitter
 
@@ -214,152 +211,123 @@ class Pipeline:
 
 
 
-        all_segments = []
+        transcripts = []
 
 
 
         #
         # Step 3
-        # Process chunks
+        # Recognize every chunk, then release the ASR model before alignment.
         #
 
-        for index, chunk in enumerate(chunks):
+        try:
+
+            for index, chunk in enumerate(chunks):
 
 
-            self.logger.info(
+                self.logger.info(
 
-                f"Chunk {index + 1}/{len(chunks)}: {chunk.path}"
-
-            )
-
-
-
-            #
-            # chunk start time
-            #
-
-            offset = chunk.start_time
-
-
-
-            #
-            # --------------------------
-            # ASR
-            # --------------------------
-            #
-
-            asr_result = self.asr.transcribe(
-
-                chunk.path,
-
-                self.language
-
-            )
-
-
-
-            original_text = self.extract_text(
-
-                asr_result
-
-            )
-
-
-
-            if not original_text.strip():
-
-                self.logger.warning(
-
-                    "Empty ASR result, skip"
+                    f"Chunk {index + 1}/{len(chunks)}: {chunk.path}"
 
                 )
 
-                continue
+                asr_result = self.asr.transcribe(
 
+                    chunk.path,
 
-
-            self.logger.info(
-
-                "ASR: "
-                +
-                original_text[:100]
-
-            )
-
-
-
-            #
-            # --------------------------
-            # Forced Alignment
-            # --------------------------
-            #
-
-            align_result = self.aligner.align(
-
-                chunk.path,
-
-                original_text,
-
-                self.resolve_language(
-
-                    asr_result,
-
-                    original_text
-
-                )
-
-            )
-
-
-
-            #
-            # --------------------------
-            # Generate subtitle blocks
-            # --------------------------
-            #
-
-            segments = self.segmenter.segment(
-
-                align_result,
-
-                original_text
-
-            )
-
-
-
-            for seg in segments:
-
-
-
-                #
-                # add chunk offset
-                #
-
-                seg["start"] += offset
-
-                seg["end"] += offset
-
-
-
-                all_segments.append(
-
-                    seg
+                    self.language
 
                 )
 
 
 
-            #
-            # Release CUDA memory
-            #
+                original_text = self.extract_text(
 
-            self.cleanup_gpu()
+                    asr_result
+
+                )
+
+
+
+                if not original_text.strip():
+
+                    self.logger.warning(
+
+                        "Empty ASR result, skip"
+
+                    )
+
+                    continue
+
+
+
+                self.logger.info(
+
+                    "ASR: "
+                    +
+                    original_text[:100]
+
+                )
+
+
+
+                transcripts.append((
+                    chunk,
+                    original_text,
+                    self.resolve_language(asr_result, original_text),
+                ))
+
+        finally:
+
+            self.asr.release()
 
 
 
         #
         # Step 4
+        # Align the stored ASR texts after ASR memory has been released.
+        #
+
+        all_segments = []
+
+        try:
+
+            for chunk, original_text, language in transcripts:
+
+                align_result = self.aligner.align(
+
+                    chunk.path,
+
+                    original_text,
+
+                    language
+
+                )
+
+                segments = self.segmenter.segment(
+
+                    align_result,
+
+                    original_text
+
+                )
+
+                for seg in segments:
+
+                    seg["start"] += chunk.start_time
+
+                    seg["end"] += chunk.start_time
+
+                    all_segments.append(seg)
+
+        finally:
+
+            self.aligner.release()
+
+
+
+        #
+        # Step 5
         # Write SRT
         #
 
@@ -607,14 +575,3 @@ class Pipeline:
                 return str(language)
 
         return None
-
-
-
-    def cleanup_gpu(
-        self
-    ):
-
-
-        if torch.cuda.is_available():
-
-            torch.cuda.empty_cache()
