@@ -1,592 +1,185 @@
 import logging
+import shutil
+import uuid
 from pathlib import Path
 
-from src.ffmpeg_util import FFmpegExtractor
-from src.audio_splitter import AudioSplitter
-
-from src.qwen3_asr import Qwen3Recognizer
 from src.aligner import Qwen3Aligner
-
+from src.audio_splitter import AudioSplitter
+from src.ffmpeg_util import FFmpegExtractor
+from src.languages import normalize_forced_alignment_language
+from src.qwen3_asr import Qwen3Recognizer
 from src.segmenter import SubtitleSegmenter
 from src.subtitle import SRTWriter
 
+
 class Pipeline:
-
-
-    def __init__(
-        self,
-        config
-    ):
-
-        self.logger = logging.getLogger(
-            "video2srt"
-        )
-
-
+    def __init__(self, config):
+        self.logger = logging.getLogger("video2srt")
         self.config = config
-
-        self.language = config.get(
-
-            "language"
-
-        )
-
-
-
-        #
-        # FFmpeg
-        #
-
-        self.extractor = FFmpegExtractor(
-
-            config.get(
-                "ffmpeg",
-                "path"
-            )
-
-        )
-
-
-
-        #
-        # Audio chunk splitter
-        #
-
+        self.language = config.get("language")
+        self.extractor = FFmpegExtractor(config.get("ffmpeg", "path"))
         self.splitter = AudioSplitter(
-
-            chunk_seconds=config.get(
-
-                "chunk",
-                "seconds"
-
-            ),
-
-            overlap_seconds=config.get(
-
-                "chunk",
-                "overlap_seconds"
-
-            ),
-
-            ffmpeg_path=config.get(
-
-                "ffmpeg",
-                "path"
-
-            )
-
+            chunk_seconds=config.get("chunk", "seconds"),
+            overlap_seconds=config.get("chunk", "overlap_seconds"),
+            ffmpeg_path=config.get("ffmpeg", "path"),
         )
-
-
-
-        #
-        # Qwen3-ASR
-        #
-
         self.asr = Qwen3Recognizer(
-
-            model_path=config.get(
-
-                "models",
-                "asr"
-
-            ),
-
-            device=config.get(
-
-                "device"
-
-            )
-
+            model_path=config.get("models", "asr"),
+            device=config.get("device"),
         )
-
-
-
-        #
-        # Qwen3 ForcedAligner
-        #
-
         self.aligner = Qwen3Aligner(
-
-            model_path=config.get(
-
-                "models",
-                "aligner"
-
-            ),
-
-            device=config.get(
-
-                "device"
-
-            )
-
+            model_path=config.get("models", "aligner"),
+            device=config.get("device"),
         )
-
-
-
-        #
-        # Smart subtitle segmenter
-        #
-
         self.segmenter = SubtitleSegmenter(
-
-            max_chars=config.get(
-
-                "subtitle",
-                "max_chars"
-
-            ),
-
-            max_duration=config.get(
-
-                "subtitle",
-                "max_duration_seconds"
-
-            ),
-
-            max_cps=config.get(
-
-                "subtitle",
-                "max_cps"
-
-            )
-
+            max_chars=config.get("subtitle", "max_chars"),
+            max_duration=config.get("subtitle", "max_duration_seconds"),
+            max_cps=config.get("subtitle", "max_cps"),
+            min_match_ratio=config.get("alignment", "min_match_ratio"),
+            low_match_policy=config.get("alignment", "low_match_policy"),
         )
-
-        #
-        # SRT writer
-        #
-
         self.writer = SRTWriter()
 
+    def run(self, video_file, output_file=None, overwrite=None):
+        video_file = Path(video_file)
+        work_dir = self._create_work_dir(video_file)
 
+        try:
+            self.logger.info("Processing: %s", video_file)
+            wav_file = self.extractor.extract(
+                video_file,
+                work_dir / f"{video_file.stem}.wav",
+            )
+            chunks = self.splitter.split(wav_file, work_dir / "chunks")
+            transcripts = self._transcribe_chunks(chunks)
+            segments = self._align_transcripts(transcripts)
+            output_file, overwrite = self._resolve_output(
+                video_file, output_file, overwrite
+            )
+            self.writer.write(
+                self._deduplicate_overlap_segments(segments),
+                output_file,
+                overwrite=overwrite,
+            )
+            self.logger.info("Finished: %s", output_file)
+            return output_file
+        finally:
+            self._cleanup_work_dir(work_dir)
 
-    # ==================================================
-    # Main pipeline
-    # ==================================================
-
-    def run(
-        self,
-        video_file,
-        output_file=None,
-        overwrite=None
-    ):
-
-
-        video_file = Path(
-            video_file
-        )
-
-
-        self.logger.info(
-
-            f"Processing: {video_file}"
-
-        )
-
-
-
-        #
-        # Step 1
-        # Extract audio
-        #
-
-        wav_file = self.extractor.extract(
-
-            video_file
-
-        )
-
-
-
-        #
-        # Step 2
-        # Split audio
-        #
-
-        chunks = self.splitter.split(
-
-            wav_file
-
-        )
-
-
-
+    def _transcribe_chunks(self, chunks):
         transcripts = []
-
-
-
-        #
-        # Step 3
-        # Recognize every chunk, then release the ASR model before alignment.
-        #
-
         try:
-
-            for index, chunk in enumerate(chunks):
-
-
-                self.logger.info(
-
-                    f"Chunk {index + 1}/{len(chunks)}: {chunk.path}"
-
-                )
-
-                asr_result = self.asr.transcribe(
-
-                    chunk.path,
-
-                    self.language
-
-                )
-
-
-
-                original_text = self.extract_text(
-
-                    asr_result
-
-                )
-
-
-
-                if not original_text.strip():
-
-                    self.logger.warning(
-
-                        "Empty ASR result, skip"
-
-                    )
-
+            for index, chunk in enumerate(chunks, start=1):
+                self.logger.info("ASR chunk %d/%d: %s", index, len(chunks), chunk.path)
+                result = self.asr.transcribe(chunk.path, self.language)
+                text = self.extract_text(result)
+                if not text.strip():
+                    self.logger.warning("Empty ASR result, skipping chunk %d", index)
                     continue
-
-
-
-                self.logger.info(
-
-                    "ASR: "
-                    +
-                    original_text[:100]
-
-                )
-
-
-
-                transcripts.append((
-                    chunk,
-                    original_text,
-                    self.resolve_language(asr_result, original_text),
-                ))
-
+                transcripts.append((chunk, text, self.resolve_language(result, text)))
         finally:
-
             self.asr.release()
+        return transcripts
 
-
-
-        #
-        # Step 4
-        # Align the stored ASR texts after ASR memory has been released.
-        #
-
-        all_segments = []
-
+    def _align_transcripts(self, transcripts):
+        segments = []
         try:
-
-            for chunk, original_text, language in transcripts:
-
-                align_result = self.aligner.align(
-
-                    chunk.path,
-
-                    original_text,
-
-                    language
-
-                )
-
-                segments = self.segmenter.segment(
-
-                    align_result,
-
-                    original_text
-
-                )
-
-                for seg in segments:
-
-                    seg["start"] += chunk.start_time
-
-                    seg["end"] += chunk.start_time
-
-                    all_segments.append(seg)
-
+            for chunk, text, language in transcripts:
+                align_result = self.aligner.align(chunk.path, text, language)
+                for segment in self.segmenter.segment(align_result, text):
+                    segment["start"] += chunk.start_time
+                    segment["end"] += chunk.start_time
+                    segments.append(segment)
         finally:
-
             self.aligner.release()
+        return segments
 
+    def _create_work_dir(self, video_file):
+        temp_root = Path(self.config.get("workspace", "temp_dir"))
+        work_dir = temp_root / f"{video_file.stem}-{uuid.uuid4().hex}"
+        work_dir.mkdir(parents=True, exist_ok=False)
+        self.logger.info("Working directory: %s", work_dir)
+        return work_dir
 
+    def _cleanup_work_dir(self, work_dir):
+        if self.config.get("workspace", "keep_temp"):
+            self.logger.info("Keeping working directory: %s", work_dir)
+            return
+        shutil.rmtree(work_dir, ignore_errors=True)
 
-        #
-        # Step 5
-        # Write SRT
-        #
-
+    def _resolve_output(self, video_file, output_file, overwrite):
         if output_file is None:
-
-            output_directory = self.config.get(
-
-                "output",
-                "directory"
-
-            )
-
-            output_directory = (
-                Path(output_directory)
-                if output_directory
-                else video_file.parent
-            )
-
-            output_file = output_directory / f"{video_file.stem}.srt"
+            directory = self.config.get("output", "directory")
+            output_file = Path(directory) if directory else video_file.parent
+            output_file = output_file / f"{video_file.stem}.srt"
+        else:
+            output_file = Path(output_file)
 
         if overwrite is None:
-
-            overwrite = self.config.get(
-
-                "output",
-                "overwrite"
-
-            )
-
-
-        all_segments = self._deduplicate_overlap_segments(
-
-            all_segments
-
-        )
-
-
-
-        self.writer.write(
-
-            all_segments,
-
-            output_file,
-
-            overwrite=overwrite
-
-        )
-
-
-        self.logger.info(
-
-            f"Finished: {output_file}"
-
-        )
-
-
-        return output_file
-
-
-
-    # ==================================================
-    # Helpers
-    # ==================================================
-
-
-    def extract_text(
-        self,
-        result
-    ):
-
-        """
-        Compatible with qwen-asr outputs
-        """
-
-
-        if isinstance(
-            result,
-            str
-        ):
-
-            return result
-
-
-
-        text = ""
-
-
-
-        if isinstance(
-            result,
-            list
-        ):
-
-
-            for item in result:
-
-
-                if hasattr(
-
-                    item,
-
-                    "text"
-
-                ):
-
-                    text += item.text
-
-
-
-                elif isinstance(
-
-                    item,
-
-                    dict
-
-                ):
-
-                    text += item.get(
-
-                        "text",
-
-                        ""
-
-                    )
-
-
-
-        elif hasattr(
-            result,
-            "text"
-        ):
-
-            text = result.text
-
-
-
-        return text
-
+            overwrite = self.config.get("output", "overwrite")
+        return output_file, overwrite
 
     @staticmethod
-    def _deduplicate_overlap_segments(segments):
-        """Remove duplicate cues produced by neighboring overlapping chunks."""
+    def extract_text(result):
+        if isinstance(result, str):
+            return result
+        candidates = result if isinstance(result, list) else [result]
+        return "".join(
+            item.get("text", "") if isinstance(item, dict) else getattr(item, "text", "")
+            for item in candidates
+        )
 
-        deduplicated = []
-
-        for segment in segments:
-            if not deduplicated:
-                deduplicated.append(segment)
-                continue
-
-            previous = deduplicated[-1]
-            same_text = (
-                "".join(previous["text"].split())
-                == "".join(segment["text"].split())
-            )
-            overlaps = (
-                min(previous["end"], segment["end"])
-                > max(previous["start"], segment["start"])
-            )
-
-            if same_text and overlaps:
-                previous_duration = previous["end"] - previous["start"]
-                segment_duration = segment["end"] - segment["start"]
-                if segment_duration > previous_duration:
-                    deduplicated[-1] = segment
-                continue
-
-            deduplicated.append(segment)
-
-        return deduplicated
-
-
-
-    def detect_language(
-        self,
-        text
-    ):
-
-
-        chinese = 0
-
-        english = 0
-
-
-
-        for c in text:
-
-
-            if (
-
-                '\u4e00'
-
-                <=
-
-                c
-
-                <=
-
-                '\u9fff'
-
-            ):
-
-                chinese += 1
-
-
-
-            elif c.isalpha():
-
-                english += 1
-
-
-
-        if chinese >= english:
-
-            return "Chinese"
-
-
-        return "English"
-
-
-    def resolve_language(
-        self,
-        asr_result,
-        text
-    ):
-        """Prefer explicit configuration, then Qwen3-ASR language detection."""
-
-        if self.language and self.language.lower() != "auto":
+    def resolve_language(self, asr_result, text):
+        if self.language.casefold() != "auto":
             return self.language
 
         detected = self.extract_result_language(asr_result)
         if detected:
-            self.logger.info(
-                f"ASR detected language: {detected}"
-            )
-            return detected
+            normalized = normalize_forced_alignment_language(detected)
+            if not normalized:
+                raise ValueError(
+                    "ASR detected a language unsupported by Qwen3-ForcedAligner: "
+                    f"{detected}"
+                )
+            self.logger.info("ASR detected language: %s", normalized)
+            return normalized
 
         fallback = self.detect_language(text)
-        self.logger.warning(
-            f"ASR language unavailable; using heuristic: {fallback}"
-        )
+        self.logger.warning("ASR language unavailable; using heuristic: %s", fallback)
         return fallback
-
 
     @staticmethod
     def extract_result_language(result):
-        """Read the language field from qwen-asr object or dictionary results."""
-
         candidates = result if isinstance(result, list) else [result]
-
         for item in candidates:
-            if isinstance(item, dict):
-                language = item.get("language")
-            else:
-                language = getattr(item, "language", None)
-
+            language = item.get("language") if isinstance(item, dict) else getattr(item, "language", None)
             if language:
                 return str(language)
-
         return None
+
+    @staticmethod
+    def detect_language(text):
+        chinese = sum("\u4e00" <= char <= "\u9fff" for char in text)
+        english = sum(char.isalpha() for char in text)
+        return "Chinese" if chinese >= english else "English"
+
+    @staticmethod
+    def _deduplicate_overlap_segments(segments):
+        deduplicated = []
+        for segment in segments:
+            if not deduplicated:
+                deduplicated.append(segment)
+                continue
+            previous = deduplicated[-1]
+            same_text = "".join(previous["text"].split()) == "".join(
+                segment["text"].split()
+            )
+            overlaps = min(previous["end"], segment["end"]) > max(
+                previous["start"], segment["start"]
+            )
+            if same_text and overlaps:
+                if segment["end"] - segment["start"] > previous["end"] - previous["start"]:
+                    deduplicated[-1] = segment
+                continue
+            deduplicated.append(segment)
+        return deduplicated

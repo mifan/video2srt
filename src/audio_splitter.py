@@ -49,14 +49,15 @@ class AudioSplitter:
 
     def split(
         self,
-        wav_file
+        wav_file,
+        output_dir=None
     ):
         """Split a WAV into overlapping chunks with their real source offsets."""
 
         wav_file = Path(wav_file)
         duration = self._get_wav_duration(wav_file)
         specs = self._build_chunk_specs(duration)
-        run_dir = self.output_dir / wav_file.stem
+        run_dir = Path(output_dir) if output_dir else self.output_dir / wav_file.stem
 
         run_dir.mkdir(parents=True, exist_ok=True)
         for old_chunk in run_dir.glob("*.wav"):

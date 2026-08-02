@@ -12,9 +12,17 @@ device: cuda:0
 
 language: auto
 
+alignment:
+  min_match_ratio: 0.85
+  low_match_policy: error
+
 output:
   directory: null
   overwrite: false
+
+workspace:
+  temp_dir: temp
+  keep_temp: false
 
 chunk:
   seconds: 300

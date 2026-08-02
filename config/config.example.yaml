@@ -15,10 +15,19 @@ device: auto
 # auto uses Qwen3-ASR's detected language. Set e.g. Chinese or English to force it.
 language: auto
 
+alignment:
+  # error: stop on poor text alignment; skip: drop the chunk; fallback: estimate times.
+  min_match_ratio: 0.85
+  low_match_policy: error
+
 output:
   # null writes next to the input video; set a directory to write subtitles there.
   directory: null
   overwrite: false
+
+workspace:
+  temp_dir: temp
+  keep_temp: false
 
 chunk:
   seconds: 300

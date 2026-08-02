@@ -92,9 +92,17 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    language: auto
 
+   alignment:
+     min_match_ratio: 0.85
+     low_match_policy: error
+
    output:
      directory: null
      overwrite: false
+
+   workspace:
+     temp_dir: temp
+     keep_temp: false
 
    chunk:
      seconds: 300
@@ -136,9 +144,17 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    language: auto
 
+   alignment:
+     min_match_ratio: 0.85
+     low_match_policy: error
+
    output:
      directory: null
      overwrite: false
+
+   workspace:
+     temp_dir: temp
+     keep_temp: false
 
    chunk:
      seconds: 300
@@ -203,17 +219,25 @@ output:
 - 文本与标点：字幕直接采用 Qwen3-ASR 的原始文本；`。！？!?；;…` 被视为句子边界，因此每个 ASR 句子对应一条 SRT 字幕。
 - 时间戳：Qwen3 ForcedAligner 只负责映射每句的起止时间，不会改写字幕文本。映射时按顺序匹配 ASR 文本与对齐文本，而不是只按字符数推算。
 - 边界保护：音频块默认有 2 秒重叠；完全相同且时间重叠的字幕会自动去重，以降低跨块重复或截断的概率。
-- 差异处理：若 ASR 与对齐文本存在局部差异，程序会记录警告，并以已匹配字符计算时间；完全无法匹配时才会使用比例估算。
+- 差异处理：若 ASR 与对齐文本存在局部差异，程序会记录警告，并以已匹配字符计算时间；低于最低匹配率时按配置选择停止、跳过或比例估算。
 - 长句切分：当一句 ASR 文本超过 `subtitle.max_chars` 或 `subtitle.max_duration_seconds` 时，会优先在逗号、顿号、冒号或空格处进行二级切分，并使用 ForcedAligner 的条目时间为子句定位。
 - 语言：`language: auto` 时优先使用 Qwen3-ASR 返回的语言字段；也可设为如 `Chinese` 或 `English`，同时约束 ASR 与 ForcedAligner。
 
 二级切分会尽量满足长度和时长限制。CPS 反映原始说话速度，单纯拆分不能从根本降低它；当字幕超过 `subtitle.max_cps` 时，程序会记录警告，便于后续针对静音区扩展显示时间或人工复核。
+
+`alignment.min_match_ratio` 控制 ASR 文本与 ForcedAligner 文本的最低匹配率；`alignment.low_match_policy` 可设为 `error`（默认，停止任务）、`skip`（跳过当前块）或 `fallback`（比例估算时间）。
 
 ## 当前代码限制
 
 - 音频分块会记录真实起始时间，并默认提供 2 秒相邻重叠；完全相同且时间重叠的字幕会去重。识别文本存在差异时，边界附近仍可能出现相近的重复字幕。
 - ASR 与 ForcedAligner 采用惰性加载：先完成全部 ASR 并释放其显存，再加载 ForcedAligner 完成对齐。单个模型仍须能独立装入显存。
 - `subtitle.format` 配置项当前未接入，输出格式固定为 SRT。
+
+## 配置与临时文件
+
+- 程序启动时会验证模型目录、FFmpeg、语言、分块、字幕阈值和输出设置；配置错误会在模型加载前报告。
+- 显式指定的 `language` 必须是 ForcedAligner 支持的 Chinese、English、Cantonese、French、German、Italian、Japanese、Korean、Portuguese、Russian 或 Spanish 之一；`auto` 则使用 ASR 检测结果。
+- 每次运行都会在 `workspace.temp_dir` 下创建唯一工作目录，避免同名视频或并发任务污染临时文件。默认完成后清理；设为 `workspace.keep_temp: true` 可保留用于排障。
 
 ## SRT 输出校验
 

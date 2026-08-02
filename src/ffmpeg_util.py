@@ -7,7 +7,7 @@ import shutil
 class FFmpegExtractor:
 
 
-    def __init__(self, ffmpeg_path, temp_dir="temp"):
+    def __init__(self, ffmpeg_path):
 
         self.logger = logging.getLogger(
             "video2srt"
@@ -16,16 +16,6 @@ class FFmpegExtractor:
         self.ffmpeg = Path(
             ffmpeg_path
         )
-
-        self.temp_dir = Path(
-            temp_dir
-        )
-
-
-        self.temp_dir.mkdir(
-            exist_ok=True
-        )
-
 
     def check(self):
 
@@ -62,7 +52,8 @@ class FFmpegExtractor:
 
     def extract(
         self,
-        video_file
+        video_file,
+        output_file
     ):
 
         """
@@ -90,14 +81,8 @@ class FFmpegExtractor:
             )
 
 
-        output = (
-            self.temp_dir /
-            (
-                video_file.stem
-                +
-                ".wav"
-            )
-        )
+        output = Path(output_file)
+        output.parent.mkdir(parents=True, exist_ok=True)
 
 
         self.logger.info(
