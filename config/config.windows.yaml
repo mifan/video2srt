@@ -12,6 +12,10 @@ device: cuda:0
 
 language: auto
 
+output:
+  directory: null
+  overwrite: false
+
 chunk:
   seconds: 300
   overlap_seconds: 2

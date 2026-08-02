@@ -43,6 +43,30 @@ def parse_args():
     )
 
 
+    parser.add_argument(
+
+        "--output",
+
+        help=
+        "Output SRT file path"
+
+    )
+
+
+    parser.add_argument(
+
+        "--overwrite",
+
+        action="store_true",
+
+        default=None,
+
+        help=
+        "Allow replacing an existing SRT file"
+
+    )
+
+
     return parser.parse_args()
 
 
@@ -168,27 +192,20 @@ def main():
         #
 
      
-        srt_file = pipeline.run(video)
+        srt_file = pipeline.run(
+
+            video,
+
+            output_file=args.output,
+
+            overwrite=args.overwrite
+
+        )
 
 
         logger.info(
             f"Subtitle created: {srt_file}"
         )
-
-
-
-
-        #
-        # Step5:
-        # 这里以后接 SRT Writer
-        #
-
-        logger.info(
-
-            "SRT writer not implemented yet"
-
-        )
-
 
         return 0
 

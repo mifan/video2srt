@@ -168,7 +168,9 @@ class Pipeline:
 
     def run(
         self,
-        video_file
+        video_file,
+        output_file=None,
+        overwrite=None
     ):
 
 
@@ -331,20 +333,31 @@ class Pipeline:
         # Write SRT
         #
 
-        output_file = (
+        if output_file is None:
 
-            video_file.parent /
+            output_directory = self.config.get(
 
-            (
-                video_file.stem
-
-                +
-
-                ".srt"
+                "output",
+                "directory"
 
             )
 
-        )
+            output_directory = (
+                Path(output_directory)
+                if output_directory
+                else video_file.parent
+            )
+
+            output_file = output_directory / f"{video_file.stem}.srt"
+
+        if overwrite is None:
+
+            overwrite = self.config.get(
+
+                "output",
+                "overwrite"
+
+            )
 
 
         all_segments = self._deduplicate_overlap_segments(
@@ -359,7 +372,9 @@ class Pipeline:
 
             all_segments,
 
-            output_file
+            output_file,
+
+            overwrite=overwrite
 
         )
 

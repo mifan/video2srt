@@ -92,6 +92,10 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    language: auto
 
+   output:
+     directory: null
+     overwrite: false
+
    chunk:
      seconds: 300
      overlap_seconds: 2
@@ -132,6 +136,10 @@ macOS 适合进行代码开发、静态检查和 FFmpeg 流程验证。
 
    language: auto
 
+   output:
+     directory: null
+     overwrite: false
+
    chunk:
      seconds: 300
      overlap_seconds: 2
@@ -158,11 +166,31 @@ python run.py /path/to/input.mp4
 python run.py /path/to/input.mp4 --config /path/to/config.yaml
 ```
 
+指定输出文件：
+
+```bash
+python run.py /path/to/input.mp4 --output /path/to/output.srt
+```
+
+默认不会覆盖已有字幕。确认需要替换时，显式传入：
+
+```bash
+python run.py /path/to/input.mp4 --overwrite
+```
+
 成功后，字幕会写入与视频相同的目录，文件名为：
 
 ```text
 输入：/path/to/demo.mp4
 输出：/path/to/demo.srt
+```
+
+也可在配置中指定默认输出目录与覆盖策略：
+
+```yaml
+output:
+  directory: null  # null 表示与输入视频同目录
+  overwrite: false
 ```
 
 运行期间还会在当前工作目录生成：
@@ -186,6 +214,12 @@ python run.py /path/to/input.mp4 --config /path/to/config.yaml
 - 音频分块会记录真实起始时间，并默认提供 2 秒相邻重叠；完全相同且时间重叠的字幕会去重。识别文本存在差异时，边界附近仍可能出现相近的重复字幕。
 - ASR 与 ForcedAligner 采用惰性加载：先完成全部 ASR 并释放其显存，再加载 ForcedAligner 完成对齐。单个模型仍须能独立装入显存。
 - `subtitle.format` 配置项当前未接入，输出格式固定为 SRT。
+
+## SRT 输出校验
+
+- 写入前会清理空文本、按时间排序，并拒绝负时间、非有限时间、缺失时间或 `end <= start` 的字幕。
+- 相邻字幕重叠时，后一个字幕的开始时间会裁剪到前一条结束时间；若裁剪后没有有效时长，则跳过该条字幕并记录警告。
+- 写入采用临时文件后原子替换，避免中途失败留下半成品 SRT。
 
 ## 项目结构
 

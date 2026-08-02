@@ -16,6 +16,10 @@ DEFAULT_CONFIG = {
         "max_cps": 15,
     },
     "language": "auto",
+    "output": {
+        "directory": None,
+        "overwrite": False,
+    },
     "chunk": {
         "seconds": 300,
         "overlap_seconds": 2,

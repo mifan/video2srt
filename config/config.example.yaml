@@ -15,6 +15,11 @@ device: auto
 # auto uses Qwen3-ASR's detected language. Set e.g. Chinese or English to force it.
 language: auto
 
+output:
+  # null writes next to the input video; set a directory to write subtitles there.
+  directory: null
+  overwrite: false
+
 chunk:
   seconds: 300
   overlap_seconds: 2

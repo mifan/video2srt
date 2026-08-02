@@ -11,6 +11,10 @@ device: auto
 
 language: auto
 
+output:
+  directory: null
+  overwrite: false
+
 subtitle:
   format: srt
   max_chars: 24
